@@ -1,3 +1,64 @@
+# AGENTS.md — правила работы над проектом «видеохостинг»
+
+## Проект
+
+Копия YouTube (тестовое задание, срок 10 дней). Полное ТЗ — `docs/TZ.md`.
+Приоритет: сначала сквозной сценарий (регистрация → загрузка → просмотр → лайк/комментарий), затем остальные экраны.
+
+## Стек
+
+- Python 3.12+ / FastAPI (REST API + SSR на Jinja2)
+- PostgreSQL 16 (SQLAlchemy 2.0 + Alembic)
+- MinIO — S3-совместимое объектное хранилище (видео, превью)
+- Redis 7 + arq — фоновые задачи (транскод ffmpeg)
+- NGINX — reverse proxy, единственный опубликованный порт
+- Docker Compose; деплой на чистую Ubuntu — `deploy.sh`
+
+Обоснования решений — в `docs/adr/`.
+
+## Команды (только uv)
+
+- `uv sync` — установить зависимости из lock-файла
+- `uv add <pkg>` — добавить зависимость (обновляет `pyproject.toml` и `uv.lock`)
+- `uv run pytest` — юнит-тесты (без Docker)
+- `uv run pytest -m integration` — интеграционные (только после подтверждения владельцем)
+- `uv run ruff check .` — линтер
+- Запрещены `pip install` и голый `python`/`python3`. Docker и Docker Compose локально не запускать (просить владельца: команда → ожидание → что прислать).
+
+## Структура репозитория (план, актуализируется)
+
+```
+src/app/        # FastAPI: api/ (REST), pages/ (SSR), services/, core/, models.py, schemas.py, templates/, static/
+src/worker/     # arq-воркер транскода
+migrations/     # Alembic
+scripts/seed.py # демо-данные
+tests/          # unit/ + integration/ (маркер integration)
+nginx/          # nginx.conf
+docker-compose.yml, deploy.sh
+docs/           # вся проектная документация
+```
+
+## Соглашения
+
+- Коммиты на английском, conventional style: `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`. Одна задача — один коммит.
+- Порядок работы: сначала тест (red), затем код (green).
+- Перед каждым коммитом: `git diff --cached` на секреты и личные данные.
+- Правки AGENTS.md — отдельным коммитом `chore(agents): ...`.
+- Если в ТЗ чего-то не хватает — фиксировать допущение явно (список в `docs/requirements.md`), не додумывать молча.
+- Отступление от плана/архитектуры — только после подтверждения владельца.
+
+## Документация
+
+- `docs/TZ.md` — исходное ТЗ
+- `docs/requirements.md` — требования, критерии приёмки, допущения
+- `docs/architecture.md` — компоненты и потоки данных
+- `docs/db-schema.md` — схема PostgreSQL
+- `docs/security.md` — модель угроз и меры
+- `docs/adr/` — архитектурные решения (ADR-001..006)
+- `docs/testing.md` — стратегия тестирования
+- `docs/plan.md` — декомпозиция работ по этапам
+
+---
 
 ## Безопасность данных и приватность
 
