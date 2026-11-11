@@ -67,7 +67,7 @@ services:
 
   worker:
     build: .
-    command: uv run arq src.worker.settings.WorkerSettings
+    command: uv run arq worker.main.WorkerSettings
     environment:
       APP_ENV: ${APP_ENV:-dev}
       SECRET_KEY: ${SECRET_KEY:?set in .env}

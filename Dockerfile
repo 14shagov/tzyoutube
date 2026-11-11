@@ -1,7 +1,5 @@
 # Single image for both web (uvicorn) and worker (arq).
-# Build: docker build -t tzyoutube .
-# Run web:   uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
-# Run worker: uv run arq src.worker.settings.WorkerSettings
+# Import root is /srv/app/src (PYTHONPATH, set below): `app.*` and `worker.*`.
 
 FROM python:3.12-slim
 
@@ -9,7 +7,8 @@ FROM python:3.12-slim
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 ENV UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/srv/app/src
 
 WORKDIR /srv/app
 
@@ -22,11 +21,11 @@ RUN apt-get update \
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project --no-dev
 
-# Copy the project and install it.
+# Copy the project code (invalidates only the last layers).
 COPY src ./src
 COPY migrations ./migrations
 COPY alembic.ini ./
-RUN uv sync --frozen --no-dev
+COPY scripts ./scripts
 
 EXPOSE 8000
 
