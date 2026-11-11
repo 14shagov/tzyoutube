@@ -144,7 +144,7 @@ erDiagram
 | title | varchar(200) | NOT NULL |
 | description | text | NOT NULL, default '' |
 | is_private | boolean | NOT NULL, default false |
-| status | varchar(16) | NOT NULL, CHECK IN ('processing','ready','failed','hidden') |
+| status | varchar(16) | NOT NULL, CHECK IN ('processing','ready','failed','hidden','deleted') — `deleted` = мягкое удаление: невидим всем, объекты чистит воркер |
 | raw_key | varchar(200) | NOT NULL — ключ исходника в MinIO |
 | video_key | varchar(200) | NULL — ключ транскода; NOT NULL при status='ready' (проверка приложением) |
 | thumbnail_key | varchar(200) | NULL — ключ превью |
@@ -159,6 +159,8 @@ erDiagram
 - `(user_id, created_at DESC)` — канал;
 - частичный `(created_at DESC) WHERE status='ready' AND NOT is_private` — главная;
 - GIN по `title` с `pg_trgm` — поиск ILIKE.
+
+Мягкое удаление (FR-10): `status='deleted'` скрывает видео из всех лент и поиска, страница отдаёт 404; воркер задачей `cleanup_video` удаляет объекты `raw`/`videos`/`thumbnails` с ретраями и затем ставит финальную пометку. Запись сохраняется до успешной очистки хранилища.
 
 ### video_views
 
