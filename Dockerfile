@@ -4,7 +4,8 @@
 FROM python:3.12-slim
 
 # uv is installed via the official installer (no pip involved).
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# Pinned version — never :latest (repo rule).
+COPY --from=ghcr.io/astral-sh/uv:0.11.11 /uv /uvx /bin/
 ENV UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -17,7 +18,9 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies first (cached layer).
+# Install dependencies first (cached layer; --no-dev keeps ruff/pytest
+# out of the runtime image). --no-install-project: only third-party deps
+# here; project code is used via PYTHONPATH, not installed.
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project --no-dev
 
@@ -29,5 +32,7 @@ COPY scripts ./scripts
 
 EXPOSE 8000
 
-# Default command: web server. The worker overrides the command in compose.
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Default command: web server. --no-sync: the venv is fully built at
+# image build time; runtime must never re-resolve or download packages.
+# The worker overrides the command in compose (also with --no-sync).
+CMD ["uv", "run", "--no-sync", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
