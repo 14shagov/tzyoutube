@@ -1,7 +1,7 @@
 # Схема PostgreSQL
 
 > ORM: SQLAlchemy 2.0, миграции: Alembic.
-> Медиа-файлы (исходники, транскоды, превью) — в MinIO; в БД только ключи объектов.
+> Медиа-файлы (исходники, транскоды, превью) — в S3-хранилище (Silo, ADR-001); в БД только ключи объектов.
 
 ## 1. ER-диаграмма
 
@@ -145,7 +145,7 @@ erDiagram
 | description | text | NOT NULL, default '' |
 | is_private | boolean | NOT NULL, default false |
 | status | varchar(16) | NOT NULL, CHECK IN ('processing','ready','failed','hidden','deleted') — `deleted` = мягкое удаление: невидим всем, объекты чистит воркер |
-| raw_key | varchar(200) | NOT NULL — ключ исходника в MinIO |
+| raw_key | varchar(200) | NOT NULL — ключ исходника в хранилище |
 | video_key | varchar(200) | NULL — ключ транскода; NOT NULL при status='ready' (проверка приложением) |
 | thumbnail_key | varchar(200) | NULL — ключ превью |
 | duration_seconds | int | NOT NULL, default 0 |
@@ -259,7 +259,7 @@ PK (video_id, user_id) = уникальность пары.
 | Данные | Где | Почему |
 |---|---|---|
 | Метаданные, права, реакции, комментарии, сессии | PostgreSQL | Транзакционность, связи, индексы |
-| Видеофайлы (raw, транскоды), превью | MinIO | Большие бинарные объекты, presigned URL, Range-запросы |
+| Видеофайлы (raw, транскоды), превью | S3-хранилище (Silo) | Большие бинарные объекты, presigned URL, Range-запросы |
 | Счётчик просмотров | videos.view_count (denormalized) | Быстрая выдача в ленте; обновляется в транзакции с video_views |
 | Логи | stdout контейнеров | Стандартный Docker logging |
 

@@ -15,7 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 def test_compose_declares_expected_services() -> None:
     compose = yaml.safe_load((PROJECT_ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
     services = compose["services"]
-    for name in ("postgres", "redis", "minio", "web", "worker", "nginx"):
+    for name in ("postgres", "redis", "silo", "web", "worker", "nginx"):
         assert name in services, f"service {name} missing in docker-compose.yml"
 
 

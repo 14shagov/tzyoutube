@@ -4,7 +4,7 @@
 
 ## Контекст
 
-Срок 10 дней, один разработчик + ревьюер. Стек зафиксирован: FastAPI + воркер транскодирования + PostgreSQL + MinIO + Redis + NGINX.
+Срок 10 дней, один разработчик + ревьюер. Стек зафиксирован: FastAPI + воркер транскодирования + PostgreSQL + S3-хранилище (Silo, форк MinIO — ADR-001) + Redis + NGINX.
 
 ## Варианты
 
@@ -23,7 +23,7 @@ migrations/        # Alembic
 scripts/           # seed.py
 tests/             # unit/ + integration/
 nginx/             # nginx.conf
-docker-compose.yml # web, worker, db, redis, minio, nginx (+ профиль seed)
+docker-compose.yml # web, worker, db, redis, silo, nginx (+ профиль seed)
 deploy.sh
 ```
 

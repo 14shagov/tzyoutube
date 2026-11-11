@@ -10,9 +10,9 @@
 |---|---|---|
 | API + SSR | FastAPI (uvicorn), Jinja2-шаблоны | REST API, серверный рендеринг экранов, авторизация, проверка прав, выдача подписанных URL |
 | БД | PostgreSQL 16 | users, videos, comments, likes, subscriptions, playlists, reports, sessions |
-| Объектное хранилище | MinIO (S3-совместимое) | Исходники, готовые транскоды, превью |
+| Объектное хранилище | Silo (форк MinIO, S3-совместимый; ADR-001) | Исходники, готовые транскоды, превью |
 | Фоновый воркер | arq (очередь на Redis 7) | Транскод ffmpeg, генерация превью, очистка хранилища при удалении |
-| Reverse proxy | NGINX | Единая точка входа `:80`, лимит тела запроса, проксирование на API и MinIO (`/videos/`, `/thumbnails/` без rewrite с сохранением Host — для валидации presigned-подписи) |
+| Reverse proxy | NGINX | Единая точка входа `:80`, лимит тела запроса, проксирование на API и хранилище (`/videos/`, `/thumbnails/` без rewrite с сохранением Host — для валидации presigned-подписи) |
 
 ### Размещение (docker compose, одна VM)
 
@@ -20,7 +20,7 @@
 - `worker` — arq-воркер, тот же образ, что `web`.
 - `postgres` — БД; данные в томе.
 - `redis` — очередь задач.
-- `minio` — S3-хранилище; данные в томе.
+- `silo` — S3-хранилище (форк MinIO, образ `pgsty/silo` с зафиксированным тегом, ADR-001); данные в томе.
 - `nginx` — reverse proxy, единственный опубликованный порт `:80`.
 - `seed` — one-shot контейнер демо-данных, запускается по требованию (`--profile seed`).
 
@@ -28,7 +28,7 @@
 flowchart LR
     U[Браузер] -->|:80| N[NGINX]
     N -->|/api/*, страницы| W[FastAPI web]
-    N -->|/media/*| M[MinIO]
+    N -->|/media/*| M[Silo S3]
     W --> PG[(PostgreSQL)]
     W --> R[(Redis)]
     W --> M
@@ -44,7 +44,7 @@ flowchart LR
 1. Браузер отправляет `POST /api/videos` (multipart): файл + метаданные (название, описание, флаг приватности).
    Прогресс — через `XMLHttpRequest.upload.onprogress` на странице загрузки.
 2. API проверяет: сессию, расширение + magic bytes (сигнатура контейнера), размер (`MAX_UPLOAD_SIZE`, по умолчанию 512 МБ), метаданные (pydantic).
-3. API стримит файл в MinIO, бакет `raw` с ключом `<uuid>`; считает SHA-256 по ходу.
+3. API стримит файл в хранилище (S3 API, Silo), бакет `raw` с ключом `<uuid>`; считает SHA-256 по ходу.
 4. В БД создаётся запись `videos` со статусом `processing`; в очередь кладётся задача `transcode(video_id)`.
 
 Обоснование: прямая multipart-загрузка через API проще presigned-upload и достаточна для одного файла ≤ 512 МБ; отдача_bytes не касается БД. Подробнее — ADR-003.
@@ -61,11 +61,11 @@ flowchart LR
 
 ### 2.3 Раздача
 
-- **Готовое видео**: API после проверки прав выдаёт браузеру presigned GET URL на `videos/<uuid>.mp4` (TTL 4 ч, настраивается `PRESIGNED_TTL_SECONDS`). Тег `<video src=...>` играет его; перемотка работает через Range-запросы, которые MinIO поддерживает (206 Partial Content).
-- **Как формируется host presigned URL (за reverse proxy)**: сигнатура SigV4 покрывает host и путь, поэтому подписывать надо тем host, которым пользуется браузер. Приложение держит два клиента MinIO: **внутренний** (`S3_ENDPOINT=minio:9000`) — для PUT/DELETE из web и воркера; **внешний** (`S3_PUBLIC_ENDPOINT=<публичный host>:80`, `S3_PUBLIC_SECURE=false`) — только для генерации presigned URL. NGINX проксирует `location /videos/` и `location /thumbnails/` на `minio:9000` **без rewrite** (URI передаётся как есть) и с `proxy_set_header Host $host` — тогда MinIO валидирует подпись, вычисленную для публичного host. Для `demo/` и локальной разработки `S3_PUBLIC_ENDPOINT=localhost`.
-- **Превью публичных видео**: отдаются через NGINX `/media/thumbnails/...` → MinIO без подписи (публичный bucket policy на чтение). Карточкам ленты подпись не нужна.
+- **Готовое видео**: API после проверки прав выдаёт браузеру presigned GET URL на `videos/<uuid>.mp4` (TTL 4 ч, настраивается `PRESIGNED_TTL_SECONDS`). Тег `<video src=...>` играет его; перемотка работает через Range-запросы, которые S3-хранилище поддерживает (206 Partial Content).
+- **Как формируется host presigned URL (за reverse proxy)**: сигнатура SigV4 покрывает host и путь, поэтому подписывать надо тем host, которым пользуется браузер. Приложение держит два клиента S3: **внутренний** (`S3_ENDPOINT=silo:9000`) — для PUT/DELETE из web и воркера; **внешний** (`S3_PUBLIC_ENDPOINT=<публичный host>:80`, `S3_PUBLIC_SECURE=false`) — только для генерации presigned URL. NGINX проксирует `location /videos/` и `location /thumbnails/` на `silo:9000` **без rewrite** (URI передаётся как есть) и с `proxy_set_header Host $host` — тогда хранилище валидирует подпись, вычисленную для публичного host. Для `demo/` и локальной разработки `S3_PUBLIC_ENDPOINT=localhost`.
+- **Превью публичных видео**: отдаются через NGINX `/media/thumbnails/...` → хранилище без подписи (публичный bucket policy на чтение). Карточкам ленты подпись не нужна.
 - **Превью приватных видео**: как и видео — presigned URL после проверки прав.
-- Прямая ссылка на объект без подписи (для `videos`, `raw`) → 403 от MinIO; `raw`-бакет не проксируется вовсе.
+- Прямая ссылка на объект без подписи (для `videos`, `raw`) → 403 от хранилища; `raw`-бакет не проксируется вовсе.
 
 ## 3. Приватные видео и защита от утечки
 
@@ -106,12 +106,12 @@ flowchart LR
 `deploy.sh` на чистой Ubuntu:
 
 1. Проверяет/ставит Docker + Docker Compose plugin (official apt-репозиторий).
-2. Копирует `.env.example` → `.env` (если нет), генерирует недостающие секреты (`POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `SECRET_KEY`) и сохраняет в `.env`.
-3. `docker compose build && docker compose up -d` (web, worker, postgres, redis, minio, nginx).
-4. Ждёт здоровья postgres/minio, применяет миграции (контейнер миграций или `alembic upgrade head` при старте `web`).
+2. Копирует `.env.example` → `.env` (если нет), генерирует недостающие секреты (`POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `SECRET_KEY`) и сохраняет в `.env`. Переменная `MINIO_ROOT_PASSWORD` унаследована от MinIO: Silo — его форк и читает те же переменные.
+3. `docker compose build && docker compose up -d` (web, worker, postgres, redis, silo, nginx).
+4. Ждёт здоровья postgres/silo, применяет миграции (контейнер миграций или `alembic upgrade head` при старте `web`).
 5. Печатает URL приложения (`http://<host>/`) и напоминание про seed: `docker compose --profile seed run --rm seed`.
 
-Всё состояние — в named volumes (`pgdata`, `minio_data`); повторный запуск идемпотентен.
+Всё состояние — в named volumes (`pgdata`, `silo_data`); повторный запуск идемпотентен.
 
 ## 7. Структура репозитория (план)
 
@@ -128,7 +128,7 @@ flowchart LR
 │   ├── main.py                    # FastAPI app, маршруты страниц
 │   ├── api/                       # REST: auth, videos, comments, likes, channels, search, moderation, admin
 │   ├── pages/                     # Jinja2-роуты экранов
-│   ├── core/                      # config, security, deps (get_current_user, require_role), storage (MinIO client)
+│   ├── core/                      # config, security, deps (get_current_user, require_role), storage (S3-клиент minio-py)
 │   ├── services/                  # бизнес-логика: доступ к видео, лайки, модерация
 │   ├── models.py                  # SQLAlchemy-модели
 │   ├── schemas.py                 # pydantic-схемы
