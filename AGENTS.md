@@ -9,10 +9,11 @@
 
 - Python 3.12+ / FastAPI (REST API + SSR на Jinja2)
 - PostgreSQL 16 (SQLAlchemy 2.0 + Alembic)
-- MinIO — S3-совместимое объектное хранилище (видео, превью)
+- Silo (форк MinIO, образ `pgsty/silo` с зафиксированным тегом) — S3-совместимое объектное хранилище (видео, превью); ADR-001
 - Redis 7 + arq — фоновые задачи (транскод ffmpeg)
 - NGINX — reverse proxy, единственный опубликованный порт
 - Docker Compose; деплой на чистую Ubuntu — `deploy.sh`
+- Правило образов: только версионированные теги (`:16-alpine`, `RELEASE.…`), `:latest` и плавающие теги запрещены (в т.ч. образ uv в Dockerfile)
 
 Обоснования решений — в `docs/adr/`.
 
