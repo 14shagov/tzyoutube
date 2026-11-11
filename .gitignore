@@ -1,0 +1,104 @@
+# =============================================================================
+# Python / uv
+# =============================================================================
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+dist/
+build/
+*.egg-info/
+# NOTE: pyproject.toml and uv.lock are intentionally tracked (deliverables).
+
+# =============================================================================
+# JetBrains IDEA / PyCharm
+# =============================================================================
+.idea/
+*.iml
+*.iws
+*.ipr
+.idea_modules/
+out/
+cmake-build-*/
+atlassian-ide-plugin.xml
+# Local run configurations (shared ones can be force-added explicitly if ever needed)
+.run/
+
+# =============================================================================
+# Other editors & OS junk
+# =============================================================================
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# =============================================================================
+# Secrets & local-only configuration
+# =============================================================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+id_rsa*
+id_ed25519*
+secrets/
+*.local
+docker-compose.override.yml
+
+# =============================================================================
+# Runtime data: DB volumes, object storage, uploads, logs, DB dumps
+# =============================================================================
+var/
+pgdata/
+postgres_data/
+storage/
+uploads/
+logs/
+*.log
+*.sql.gz
+*.dump
+
+# =============================================================================
+# Media files anywhere — except curated demo assets (see demo_media/)
+# demo_media/ holds small (<1 MB) sample videos for the DB seed script.
+# =============================================================================
+*.mp4
+*.webm
+*.mkv
+*.mov
+*.avi
+*.m4v
+*.flv
+*.wmv
+!demo_media/**
+
+# =============================================================================
+# Frontend build artifacts (if a JS toolchain appears later)
+# =============================================================================
+node_modules/
+.next/
+.cache/
+coverage/
+
+# =============================================================================
+# Local AI-harness memory (machine-local, not a project deliverable)
+# =============================================================================
+.dsh-memory/
+
+# =============================================================================
+# Intentionally NOT ignored (deliverables per TZ.md):
+#   AGENTS.md, CLAUDE.md, .claude/, .cursor/, .mcp.json, docs/, README,
+#   pyproject.toml, uv.lock, .env.example, migrations/, deploy scripts, seed
+# =============================================================================
