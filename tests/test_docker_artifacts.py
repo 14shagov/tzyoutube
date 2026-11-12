@@ -7,10 +7,13 @@ They parse the YAML/Dockerfile and assert repo rules:
   never `src.*` which only exists in the host layout);
 - runtime commands never trigger a uv re-sync (`uv run` must carry --no-sync);
 - the runtime image installs only production dependencies (--no-dev),
-  and dependencies are installed before the code is copied (cache-friendly).
+  and dependencies are installed before the code is copied (cache-friendly);
+- every COPY/ADD source in the Dockerfile exists in the repo and is
+  tracked by git (so a missing dir breaks tests, not the CI build).
 """
 
 import re
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -114,3 +117,53 @@ def test_web_runs_migrations_on_start() -> None:
     compose = _compose()
     web_cmd = compose["services"]["web"].get("command", "")
     assert "alembic upgrade head" in web_cmd
+
+
+def test_copy_sources_exist_and_are_tracked() -> None:
+    """Every COPY/ADD source must exist on disk AND be git-tracked.
+
+    Docker COPY silently fails on empty/untracked dirs (the .dockerignore
+    or a fresh clone may lack them), breaking `docker compose build` far
+    from the change that caused it. This guard fails fast in unit tests.
+    """
+    text = _dockerfile()
+    copy_lines = [
+        line for line in text.splitlines()
+        if line.strip().upper().startswith(("COPY ", "ADD "))
+    ]
+    assert copy_lines, "no COPY/ADD instructions found — parser drift?"
+
+    tracked = set(
+        subprocess.run(
+            ["git", "ls-files"],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.splitlines()
+    )
+
+    problems: list[str] = []
+    for line in copy_lines:
+        # Skip COPY --from=<stage> lines: their source is a build stage,
+        # not a path in the build context.
+        if "--from=" in line:
+            continue
+        parts = line.split()
+        # Strip COPY/ADD keyword; sources are all parts except the last (dest).
+        sources = parts[1:-1]
+        for src in sources:
+            if src.startswith("--"):
+                continue  # flags like --chown
+            path = PROJECT_ROOT / src
+            if not path.exists():
+                problems.append(f"{src}: does not exist")
+                continue
+            if path.is_dir():
+                # Directory: at least one tracked file must live inside it.
+                prefix = src.rstrip("/") + "/"
+                if not any(t.startswith(prefix) for t in tracked):
+                    problems.append(f"{src}: exists but nothing inside is git-tracked")
+            elif src not in tracked:
+                problems.append(f"{src}: not git-tracked")
+    assert not problems, "COPY/ADD source problems:\n" + "\n".join(problems)
