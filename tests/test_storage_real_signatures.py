@@ -6,7 +6,6 @@ the real stack (500 on POST /api/videos). These tests pin Storage to
 the REAL library signatures via create_autospec(Minio).
 """
 
-import io
 import tempfile
 from pathlib import Path
 from unittest.mock import create_autospec
