@@ -1,7 +1,7 @@
 """In-memory fakes for unit tests (ADR-005: interfaces over concretions)."""
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from app.models import SessionToken, User
 
@@ -43,7 +43,12 @@ class FakeUserRepo:
         return user
 
     async def create_session(self, user_id: uuid.UUID, expires_at: datetime) -> SessionToken:
-        token = SessionToken(id=uuid.uuid4(), user_id=user_id, expires_at=expires_at)
+        token = SessionToken(
+            id=uuid.uuid4(),
+            user_id=user_id,
+            expires_at=expires_at,
+            created_at=datetime.now(UTC),
+        )
         self.sessions[token.id] = token
         self.by_user_sessions.setdefault(user_id, []).append(token.id)
         return token
