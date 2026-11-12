@@ -14,6 +14,7 @@
   3. `1965dab` — зависимости ставятся при сборке (`uv sync --frozen --no-install-project --no-dev`), рантайм — `uv run --no-sync` (без докачки dev-пакетов и пересинхронизации), uv запинен `ghcr.io/astral-sh/uv:0.11.11`, слой deps раньше кода (кэш).
   4. `fbb0e78` — статические тесты-стражи: запрет `:latest` и образов minio/minio, minio/mc, quay.io/minio; единый корень импорта в командах; `uv run` только с `--no-sync`; `--no-dev` в сборке; порядок слоёв. Проверены негативно (ловят подмену тега на latest).
 - Тесты: 19 unit, все зелёные; `uv run ruff check .` чист.
+- Этап 2, часть A (пользователи и сессии): модели User/SessionToken/Video/VideoView в `src/app/models.py`; сервис `app/services/auth.py` (bcrypt cost 12 напрямую, без passlib — тот несовместим с bcrypt 5.x; регистрация/логин/resolve_session, доменные ошибки); `app/services/rate_limit.py` (in-memory для юнит-режима, Redis для production); `app/services/fakes.py` (FakeUserRepo); API `app/api/auth.py` (register/login/logout/me, cookie HttpOnly SameSite=Lax, generic 401); `app/api/deps.py` (require_role); миграция `a1b2c3d4e5f6` users+sessions (вручную — autogenerate требует живую БД); ruff-конфиг: `extend-immutable-calls` для Depends/require_role (B008). 38 unit-тестов зелёные, ruff чист.
 
 ## Проверено вручную (владельцем, Docker Desktop Windows)
 

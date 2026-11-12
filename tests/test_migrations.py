@@ -26,10 +26,27 @@ def test_migration_scripts_are_valid_python() -> None:
     assert versions_dir.is_dir()
     scripts = list(versions_dir.glob("*.py"))
     assert scripts, "expected at least one migration script"
+    revisions = set()
     for script in scripts:
         spec = importlib.util.spec_from_file_location(script.stem, script)
         assert spec and spec.loader
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         assert module.revision
+        revisions.add(module.revision)
         assert module.down_revision is None or isinstance(module.down_revision, str)
+    # No accidental duplicate revision ids.
+    assert len(revisions) == len(scripts)
+
+
+def test_users_and_sessions_migration_exists() -> None:
+    # The auth migration must create users + sessions and index expires_at.
+    versions_dir = PROJECT_ROOT / "migrations" / "versions"
+    found = False
+    for script in versions_dir.glob("*.py"):
+        text = script.read_text(encoding="utf-8")
+        if '"users"' in text and '"sessions"' in text and "gen_random_uuid" in text:
+            assert "ix_sessions_expires_at" in text
+            assert "ck_users_role" in text
+            found = True
+    assert found, "users/sessions migration not found"
