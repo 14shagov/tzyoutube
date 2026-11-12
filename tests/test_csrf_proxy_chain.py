@@ -9,7 +9,6 @@ These tests build the ASGI scope by hand the way uvicorn behind nginx
 does: server = container socket, headers carry the public Host.
 """
 
-import pytest
 
 from app.api.security import CsrfMiddleware
 
