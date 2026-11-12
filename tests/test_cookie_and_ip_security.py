@@ -61,9 +61,13 @@ class TestSecureCookie:
     ) -> None:
         from app.core.config import get_settings
 
-        # Isolated Settings with production env and a real secret.
+        # Production deploy WITH TLS: owner opts into Secure explicitly.
         settings = get_settings().model_copy(
-            update={"app_env": "production", "secret_key": "x" * 32}
+            update={
+                "app_env": "production",
+                "secret_key": "x" * 32,
+                "cookie_secure": True,
+            }
         )
         app = create_app()
         repo = FakeUserRepo()

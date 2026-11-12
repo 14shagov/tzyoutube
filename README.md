@@ -31,6 +31,13 @@ Several addresses: separate with commas. After changing `.env`, restart:
 secrets; set `ALLOWED_ORIGINS` in the generated `.env` to your public
 address before (or after) the first `docker compose up -d`.
 
+## Cookie Secure flag
+
+`COOKIE_SECURE` (default off) — turn it on only when serving over HTTPS,
+otherwise browsers will refuse to store the session cookie on plain
+HTTP and login will silently fail. With HTTPS: set `COOKIE_SECURE=true`
+and `ALLOWED_ORIGINS=https://your-domain`.
+
 ## Tests
 
 ```bash

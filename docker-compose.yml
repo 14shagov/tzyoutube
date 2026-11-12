@@ -56,6 +56,10 @@ services:
       S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-localhost}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set in .env}
       S3_SECRET_KEY: ${S3_SECRET_KEY:?set in .env}
+      # Public origin(s) for CSRF checks; set to your VM IP/domain in .env.
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost,http://127.0.0.1}
+      # Session cookie Secure flag: enable only behind HTTPS.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
     depends_on:
       postgres:
         condition: service_healthy

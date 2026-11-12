@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     # list plus the Host header fallback is the source of truth (m01882).
     allowed_origins: str = "http://localhost,http://127.0.0.1"
 
+    # Cookies: Secure flag is a DEPLOYMENT decision (HTTPS only), not an
+    # env-mode decision — a production deploy over plain HTTP must still
+    # keep working (m01882 task 5).
+    cookie_secure: bool = False
+
     @model_validator(mode="after")
     def _reject_insecure_production(self) -> "Settings":
         if self.is_production and self.secret_key.startswith("dev-insecure"):

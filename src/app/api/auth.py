@@ -138,7 +138,7 @@ async def login(
         # Same generic message: no user enumeration (docs/security.md).
         raise HTTPException(401, "invalid email or password") from None
     _set_session_cookie(
-        response, token.id, settings.session_ttl_days, secure=settings.is_production
+        response, token.id, settings.session_ttl_days, secure=settings.cookie_secure
     )
     return UserPublic.model_validate(user, from_attributes=True)
 
