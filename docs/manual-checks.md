@@ -119,3 +119,25 @@ docker compose down -v        # чистый старт (удалит данны
   все таблицы (users, sessions, videos, video_views, reactions,
   comments, video_acl, alembic_version) созданы.
 - Прислать: вывод `ps` + хвосты логов web и worker + вывод `\dt`.
+
+## 12. Swagger за nginx: изменяющие запросы проходят (регресс после m01882)
+
+- Команда: открыть `http://localhost/docs`, в Swagger UI выполнить
+  `POST /auth/register` с телом
+  `{"email":"swagger1@example.com","password":"Password123","channel_name":"Swagger One"}`.
+- Ожидание: 201, тело с `channel_name` — НЕ 403 cross-origin.
+- Прислать: скриншот ответа или код+тело.
+
+## 13. CSRF: чужой Origin отклонён и виден в логах
+
+- Команды:
+  ```
+  curl.exe -i -X POST http://localhost/auth/register -H "Origin: http://localhost" -H "Content-Type: application/json" --data-raw "{}"
+  curl.exe -i -X POST http://localhost/auth/register -H "Origin: http://evil.example" -H "Content-Type: application/json" --data-raw "{}"
+  docker compose logs web --tail 10
+  ```
+- Ожидание: первый запрос → 422 (валидация: пустое тело, но Origin
+  принят); второй → 403 `{"detail":"cross-origin request rejected"}`;
+  в логах web строка `WARNING ... csrf rejected: method=POST
+  path=/auth/register origin='http://evil.example' ...` без cookie/секретов.
+- Прислать: статусы обоих ответов + строку WARNING из логов.
