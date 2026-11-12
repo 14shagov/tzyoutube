@@ -104,8 +104,8 @@ services:
       SECRET_KEY: ${SECRET_KEY:?set in .env}
       DATABASE_URL: postgresql+asyncpg://tzyoutube:${POSTGRES_PASSWORD}@postgres:5432/tzyoutube
       S3_ENDPOINT: silo:9000
-      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set .env}
-      S3_SECRET_KEY: ${S3_SECRET_KEY:?set .env}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set in .env}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?set in .env}
     depends_on:
       postgres:
         condition: service_healthy

@@ -19,11 +19,12 @@
 
 - Стек поднимался с локальным override-файлом (в репозиторий не входит): postgres, redis, silo, web, nginx; `pgsty/silo:RELEASE.2026-09-16T00-00-00Z` здоров, бакет `videos` создаётся, `/videos/*` отдаёт AccessDenied без подписи.
 - Проблемы, найденные в ревью (удалённый образ minio, ModuleNotFoundError без PYTHONPATH, докачка dev-акетов при старте, uv :latest), исправлены — см. коммиты выше.
+- Повторная проверка БЕЗ override вскрыла падение сборки: `COPY scripts ./scripts` — каталог `scripts/` отсутствовал в репо (seed планировался на этап 5). Исправлено заглушкой `scripts/seed.py` (`0e398bc`: честный отказ с exit=1, без имитации успеха) + статический страж COPY/ADD-источников (`64b91f8`: каждый источник должен существовать и быть git-tracked; негативно проверен — падал до исправления). Попутно исправлена опечатка `set .env` → `set in .env` в seed-сервисе compose.
 
 ## НЕ проверено вручную (нужно после этих правок)
 
 - Полный стек БЕЗ локального override-файла (команды — в резюме сессии): build с нуля, health, миграции при старте web, worker-stub, раздача `/videos/test` → 403.
-- `docker compose --profile seed run --rm seed` — после появления `scripts/seed.py` (этап 5).
+- `docker compose --profile seed run --rm seed` — заглушка честно падает «seed not implemented yet» (exit=1); реальный seed — этап 5.
 - deploy.sh на чистой Ubuntu — этап 5.
 
 ## Дальше
