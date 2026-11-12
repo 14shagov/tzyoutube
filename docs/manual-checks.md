@@ -141,3 +141,24 @@ docker compose down -v        # чистый старт (удалит данны
   в логах web строка `WARNING ... csrf rejected: method=POST
   path=/auth/register origin='http://evil.example' ...` без cookie/секретов.
 - Прислать: статусы обоих ответов + строку WARNING из логов.
+
+## 14. Загрузка mp4 через Swagger → processing → ready → ссылка открывается (регресс после m02086)
+
+- Команды:
+  ```
+  # 1) залогиниться (или зарегистрироваться — сессия откроется сразу):
+  curl.exe -i -c cookies.txt -X POST http://localhost/auth/login -H "Origin: http://localhost" -H "Content-Type: application/json" --data-raw "{\"email\":\"user1@example.com\",\"password\":\"Password123\"}"
+  # 2) загрузить ролик (магические байты mp4):
+  curl.exe -i -b cookies.txt -X POST http://localhost/api/videos -H "Origin: http://localhost" -F "file=@demo_media/sample.mp4" -F "title=Manual check"
+  # записать id из ответа (202), затем:
+  docker compose exec postgres psql -U tzyoutube -d tzyoutube -c "SELECT id,status,video_key,thumbnail_key FROM videos ORDER BY created_at DESC LIMIT 1;"
+  # подождать ~10 секунд (воркер транскодит), повторить SELECT
+  # 3) получить карточку:
+  curl.exe -i -b cookies.txt http://localhost/api/videos/<id> -H "Origin: http://localhost"
+  ```
+  Затем открыть ссылку `play_url` из карточки в браузере.
+- Ожидание: 202 на загрузке; первый SELECT — `processing`; второй —
+  `ready` c заполненными `video_key`/`thumbnail_key`; карточка содержит
+  `play_url` вида `http://localhost/videos/<uuid>.mp4?...`; ссылка
+  открывается в браузере и видео воспроизводится (или скачивается).
+- Прислать: ответы обоих SELECT, `play_url`, статус открытия ссылки.
