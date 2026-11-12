@@ -1,41 +1,55 @@
 # Статус проекта
 
-> Журнал «сделано / дальше / проблемы». Обновляется в конце каждой сессии.
+Обновлено: 2026-11-12 (после Этапа 2, части A–D).
 
 ## Сделано
 
-- Шаг 0: `.gitignore` (коммит `0cb0aad`).
-- Этап 0: проектирование — `docs/requirements.md`, `architecture.md`, `db-schema.md`, `security.md`, `adr/ADR-001..006`, `testing.md`, `plan.md`; AGENTS.md дополнен. Коммиты `0cb0aad..ef35b71`.
-- Правки по ревью Этапа 0 (m00155): ответы на 5 вопросов в `requirements.md` (раздел 7), приоритеты P0/P1/P2 в `plan.md`, presigned host за reverse proxy в `architecture.md` + ADR-002/003, статус `deleted` в `db-schema.md`, правило целостности файлов в AGENTS.md, журнал `status.md`. Коммиты `5fc6ba6`, `5bc70cb`, `cb995f4`.
-- Этап 1 (каркас): 1.1 uv-проект, Python 3.12.13, зависимости, pytest-конфиг (`3e95be2`); 1.2 FastAPI-каркас (`de84d0a`); 1.3 Alembic async + baseline (`263fdf1`); 1.4 Dockerfile/compose/nginx заготовки (`33477a4`); `.env.example` (`4b019c2`); статус (`bdf8bf8`).
-- Ревью Docker владельцем (m00687) и исправления, по одному коммиту на задачу:
-  1. `777f067` — образ `pgsty/silo:RELEASE.2026-09-16T00-00-00Z` вместо удалённого `minio/minio`; сервис/volume переименованы в `silo`; ADR-001 пересмотрен (MinIO archived, варианты Silo/RustFS/SeaweedFS/Garage, риски AGPLv3 и best-effort mc), architecture/db-schema/security/testing/ADR-003/005/006 обновлены; AGENTS.md — правило версионированных тегов (`44be4c8`).
-  2. `bcc7ea3` — единый корень импорта: `ENV PYTHONPATH=/srv/app/src` в Dockerfile; команды web/alembic/seed — `app.*`, воркер — `worker.main.WorkerSettings` (заготовка `src/worker/main.py` создана); никаких `src.*` и локальных обходов.
-  3. `1965dab` — зависимости ставятся при сборке (`uv sync --frozen --no-install-project --no-dev`), рантайм — `uv run --no-sync` (без докачки dev-пакетов и пересинхронизации), uv запинен `ghcr.io/astral-sh/uv:0.11.11`, слой deps раньше кода (кэш).
-  4. `fbb0e78` — статические тесты-стражи: запрет `:latest` и образов minio/minio, minio/mc, quay.io/minio; единый корень импорта в командах; `uv run` только с `--no-sync`; `--no-dev` в сборке; порядок слоёв. Проверены негативно (ловят подмену тега на latest).
-- Тесты: 19 unit, все зелёные; `uv run ruff check .` чист.
-- Этап 2, часть A (пользователи и сессии): модели User/SessionToken/Video/VideoView в `src/app/models.py`; сервис `app/services/auth.py` (bcrypt cost 12 напрямую, без passlib — тот несовместим с bcrypt 5.x; регистрация/логин/resolve_session, доменные ошибки); `app/services/rate_limit.py` (in-memory для юнит-режима, Redis для production); `app/services/fakes.py` (FakeUserRepo); API `app/api/auth.py` (register/login/logout/me, cookie HttpOnly SameSite=Lax, generic 401); `app/api/deps.py` (require_role); миграция `a1b2c3d4e5f6` users+sessions (вручную — autogenerate требует живую БД); ruff-конфиг: `extend-immutable-calls` для Depends/require_role (B008). 38 unit-тестов зелёные, ruff чист.
-- Этап 2, часть B (загрузка видео): `app/core/storage.py` (Storage-обёртка над S3-клиентом, BUCKETS raw/videos/thumbnails — ADR-001, ленивый singleton get_storage); `app/services/videos.py` (validate_upload: whitelist расширений + magic bytes ftyp/EBML/RIFF-AVI + размер из MAX_UPLOAD_SIZE, UploadArgs, VideoStatus, new_video/build_raw_key); `app/api/videos.py` (POST /api/videos multipart: Form-поля title/description + File, 401 без сессии, 415 неверный тип/контент, 413 оверсайз, 202 + статус processing, стрим в raw/<uuid>.<ext>, enqueue transcode); `app/worker/queue.py` (ArqTranscodeQueue поверх arq create_pool); зависимость python-multipart. 62 теста зелёные, ruff чист.
-- Этап 2, часть C (воркер и раздача): `app/services/transcode.py` (build_ffmpeg_args: scale=-2:480 libx264 preset fast aac +faststart + превью -ss 1 -frames:v 1; run_transcode полностью синхронный — arq-задача обернёт БД в свой loop; статусы ready/failed через TranscodeRepo, duration из probe); `app/services/access.py` (can_view: status=ready + приватность + владелец/модератор/админ; can_view_with_acl — с whitelist video_acl (таблица этапа 3, интерфейс готов); video_play_url только для публичных, authorize_play_url после проверки, view_or_none — объединённый гейт → None ⇒ 404). ffmpeg в юнит-тестах изолирован (FakeRunner создаёт файлы, probe подменяется). 78 тестов зелёные, ruff чист.
+- Этап 0: проектирование (requirements, architecture, db-schema, security,
+  ADR-001..006, testing, plan) — принято ревьюером.
+- Этап 1: каркас (uv, FastAPI /health + /docs, Settings, alembic, Dockerfile,
+  compose, статические стражи) — принят ревьюером, ручная проверка Docker
+  пройдена без override-файла.
+- Этап 2, часть A (tag stage2-part-a, eeab8de): модели users/sessions +
+  миграция a1b2c3d4e5f6, bcrypt (cost 12) без passlib, регистрация/вход/
+  выход, сессии HttpOnly SameSite=Lax cookie, get_current_user,
+  require_role, rate limit на вход (5/10 мин, in-memory в дев-режиме,
+  Redis в production), тесты безопасности (дубликаты, generic 401,
+  блокировка, 429, роль 403).
+- Этап 2, часть B (tag stage2-part-b, 9bd1673): storage-интерфейс S3
+  (put/presigned/delete), валидация загрузки (расширение + magic bytes +
+  размер из env), POST /api/videos (multipart), raw-ключи, очередь
+  arq-заглушка enqueue_transcode.
+- Этап 2, часть C (tag stage2-part-c, 3468f7c): сервис транскода (ffmpeg
+  480p + превью, синхронный, изолированный runner), access-контроль
+  (can_view, can_view_with_acl, view_or_none), presigned GET c TTL из env.
+- Этап 2, часть D (tag stage2-part-d, 00fcf83): модели video_views/
+  reactions/comments/video_acl + миграция b7c8d9e0f1a2, SqlFeedRepo/
+  SqlViewRepo/SqlReactionRepo/SqlCommentRepo/SqlAclRepo, эндпоинты:
+  карточка GET /api/videos/{id}, лента GET /api/feed, поиск
+  GET /api/search?q=, просмотры POST /api/videos/{id}/view (дедуп 24 ч,
+  гости по cookie guest_id), реакции POST .../reactions, комментарии
+  POST/GET .../comments (1 уровень, trim, 1..2000).
+- Итог: 95 тестов зелёные (uv run pytest), ruff чист.
 
-## Проверено вручную (владельцем, Docker Desktop Windows)
+## Не сделано (сознательно, вне объёма этапа 2 бэкенда)
 
-- Стек поднимался с локальным override-файлом (в репозиторий не входит): postgres, redis, silo, web, nginx; `pgsty/silo:RELEASE.2026-09-16T00-00-00Z` здоров, бакет `videos` создаётся, `/videos/*` отдаёт AccessDenied без подписи.
-- Проблемы, найденные в ревью (удалённый образ minio, ModuleNotFoundError без PYTHONPATH, докачка dev-акетов при старте, uv :latest), исправлены — см. коммиты выше.
-- Повторная проверка БЕЗ override вскрыла падение сборки: `COPY scripts ./scripts` — каталог `scripts/` отсутствовал в репо (seed планировался на этап 5). Исправлено заглушкой `scripts/seed.py` (`0e398bc`: честный отказ с exit=1, без имитации успеха) + статический страж COPY/ADD-источников (`64b91f8`: каждый источник должен существовать и быть git-tracked; негативно проверен — падал до исправления). Попутно исправлена опечатка `set .env` → `set in .env` в seed-сервисе compose.
+- Шаблоны и фронтенд (по заданию владельца — позже).
+- Сервисы каналов/подписок/плейлистов/жалоб/модерации (этапы 3–4 плана).
+- Воркер-задача cleanup_video (удаление — задача 3.7).
+- seed и deploy.sh (этап 5).
 
-## НЕ проверено вручную (нужно после этих правок)
+## Проблемы и заметки
 
-- Полный стек БЕЗ локального override-файла (команды — в резюме сессии): build с нуля, health, миграции при старте web, worker-stub, раздача `/videos/test` → 403.
-- `docker compose --profile seed run --rm seed` — заглушка честно падает «seed not implemented yet» (exit=1); реальный seed — этап 5.
-- deploy.sh на чистой Ubuntu — этап 5.
+- Инциденты порчи вывода при записи больших файлов (ранее) — правило
+  перечитывания соблюдено в этом этапе; в конце этапа замечен одиночный
+  артефакт генерации в собственном сообщении агента (битая строка даты),
+  содержимого файлов не касался, юнит-тестов/файлов не поразил.
+- Alembic autogenerate недоступен без локальной PostgreSQL: миграции
+  пишутся вручную и накрываются тестами-стражами (структурные маркеры).
+- passlib убран (несовместим с bcrypt 5.x) — допущение 10 в
+  docs/requirements.md.
 
 ## Дальше
 
-- Этап 2 (вертикальный срез, `docs/plan.md` 2.1–2.15): users+sessions, регистрация, логин/логаут, videos+video_views, storage-интерфейс, POST /api/videos, воркер transcode, страница просмотра, дедуп просмотров, реакции, комментарии, лента.
-- До старта этапа 2: ручная проверка владельцем стека без override (см. выше).
-
-## Проблемы
-
-- Инструмент записи больших файлов периодически портит содержимое (обрывки черновиков, посторонние инструкции-инъекции). Случаи доложены владельцу; правило «перечитывать файл после записи» закреплено в AGENTS.md. В этой сессии — чисто.
-- `uv init` записал `requires-python >=3.14` — исправлено на `>=3.12` вручную (этап 1).
+- Этап 3 (каналы, подписки, приватность UI, плейлисты, удаление) —
+  после подтверждения владельцем результатов этапа 2.
