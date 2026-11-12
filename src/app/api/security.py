@@ -1,35 +1,69 @@
 """CSRF middleware: same-origin enforcement for state-changing methods.
 
-Defense in depth alongside SameSite=Lax cookies (docs/security.md):
-- If Origin is present, its host:port must equal the request host.
-- Else if Referer is present, its origin must equal the request host.
-- No Origin/Referer (curl, mobile app, server-to-server): allowed —
-  browsers always attach Origin to cross-site POSTs, so its absence
-  means a non-browser client which cannot be CSRF'd.
+Defense in depth alongside SameSite=Lax cookies (docs/security.md).
 
-CSRF tokens are unnecessary here: the app has no cross-site POST
-use-cases, and Origin check + SameSite=Lax covers the browser surface.
+Source of truth for "is this Origin ours" (review m01882): the
+ALLOWED_ORIGINS env list, with the request Host header as fallback.
+The ASGI scope["server"] address is NEVER used — behind nginx it is the
+container socket (e.g. 172.21.0.5:8000), which never matches what the
+browser sent, so every browser POST would be rejected.
+
+Rules:
+- Origin present: must match an allowed origin (scheme+host+port,
+  default ports 80/443 normalized away). "null" never matches.
+- Else Referer present: its origin must match the same way.
+- No Origin/Referer (curl, server-to-server): allowed — browsers always
+  attach Origin to cross-site POSTs, so its absence means a non-browser
+  client which cannot be CSRF'd.
+- GET/HEAD/OPTIONS never blocked.
 """
 
+import logging
 from urllib.parse import urlsplit
 
 from starlette.types import ASGIApp, Receive, Scope, Send
+
+from app.core.config import Settings, get_settings
+
+logger = logging.getLogger("tzyoutube.csrf")
 
 _STATE_CHANGING = {"POST", "PUT", "PATCH", "DELETE"}
 
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 
 
-def _host_of(url: str) -> str:
-    """Normalize host[:port], dropping default ports, for comparison."""
-    parts = urlsplit(url)
-    netloc = (parts.netloc or parts.path).lower()
-    scheme = parts.scheme.lower() or "http"
+def _normalize_origin(url: str) -> tuple[str, str] | None:
+    """(scheme, host:port) or None if unparseable; default ports kept
+    explicit so both sides of the comparison normalize identically."""
+    parts = urlsplit(url.strip())
+    scheme = parts.scheme.lower()
+    if scheme not in ("http", "https"):
+        return None
+    netloc = parts.netloc.lower()
+    if not netloc:
+        return None
+    host = netloc
+    port = _DEFAULT_PORTS.get(scheme)
     if ":" in netloc:
-        host, _, port = netloc.rpartition(":")
-        if port.isdigit() and int(port) == _DEFAULT_PORTS.get(scheme):
-            return host
-    return netloc
+        host, _, port_str = netloc.rpartition(":")
+        if not port_str.isdigit():
+            return None
+        port = int(port_str)
+    return scheme, f"{host}:{port}"
+
+
+def _allowed_origin_set(settings: Settings) -> set[tuple[str, str]]:
+    origins: set[tuple[str, str]] = set()
+    for raw in settings.allowed_origins.split(","):
+        normalized = _normalize_origin(raw)
+        if normalized is not None:
+            origins.add(normalized)
+    return origins
+
+
+def get_csrf_settings() -> Settings:
+    """Dependency seam: tests override this to inject Settings."""
+    return get_settings()
 
 
 class CsrfMiddleware:
@@ -49,28 +83,42 @@ class CsrfMiddleware:
         }
         origin = headers.get("origin")
         referer = headers.get("referer")
-        request_host = scope.get("server")
-        # Drop the port when it is the scheme default (80 here): browsers
-        # omit it in Origin/Referer, scope always carries it.
-        port = request_host[1] if request_host else 0
-        request_host_str = (
-            request_host[0] if port in (80, 443, 0) else f"{request_host[0]}:{port}"
-        ).lower() if request_host else ""
+        host_header = headers.get("host", "")
 
-        bad_origin = origin is not None and _host_of(origin) != request_host_str
-        bad_referer = (
-            origin is None
-            and referer is not None
-            and _host_of(referer) != request_host_str
-        )
+        settings = get_csrf_settings()
+        allowed = _allowed_origin_set(settings)
 
-        if bad_origin or bad_referer:
-            response_start = {
-                "type": "http.response.start",
-                "status": 403,
-                "headers": [(b"content-type", b"application/json")],
-            }
-            await send(response_start)
+        # Fallback: the Host header (nginx forwards it) is trusted as an
+        # implicit allowed origin: http://<host>.
+        if host_header:
+            fallback = _normalize_origin(f"http://{host_header}")
+            if fallback is not None:
+                allowed.add(fallback)
+
+        candidate = origin if origin is not None else referer
+        if candidate is None:
+            await self.app(scope, receive, send)
+            return
+
+        normalized = _normalize_origin(candidate)
+        accepted = normalized is not None and normalized in allowed
+
+        if not accepted:
+            logger.warning(
+                "csrf rejected: method=%s path=%s origin=%r referer=%r allowed=%s",
+                scope.get("method"),
+                scope.get("path"),
+                origin,
+                referer,
+                sorted(settings.allowed_origins.split(",")),
+            )
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 403,
+                    "headers": [(b"content-type", b"application/json")],
+                }
+            )
             await send(
                 {
                     "type": "http.response.body",

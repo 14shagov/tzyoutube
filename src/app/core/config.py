@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     # Sessions
     session_ttl_days: int = 14
 
+    # CSRF: origins allowed for state-changing browser requests (comma
+    # separated). Behind nginx the app container never sees the public
+    # host in scope["server"] (that is the container socket), so this
+    # list plus the Host header fallback is the source of truth (m01882).
+    allowed_origins: str = "http://localhost,http://127.0.0.1"
+
     @model_validator(mode="after")
     def _reject_insecure_production(self) -> "Settings":
         if self.is_production and self.secret_key.startswith("dev-insecure"):
