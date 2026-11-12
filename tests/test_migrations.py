@@ -50,3 +50,22 @@ def test_users_and_sessions_migration_exists() -> None:
             assert "ck_users_role" in text
             found = True
     assert found, "users/sessions migration not found"
+
+
+def test_video_domain_migration_exists() -> None:
+    # videos/video_views/reactions/comments/video_acl in one migration.
+    versions_dir = PROJECT_ROOT / "migrations" / "versions"
+    found = False
+    for script in versions_dir.glob("*.py"):
+        text = script.read_text(encoding="utf-8")
+        if '"videos"' in text and '"video_views"' in text and '"video_acl"' in text:
+            for marker in (
+                "ck_videos_status",
+                "ix_videos_public_feed",
+                "uq_reactions_user_video",
+                "ck_reactions_value",
+                "ix_comments_video_created",
+            ):
+                assert marker in text
+            found = True
+    assert found, "video domain migration not found"
