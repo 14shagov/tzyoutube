@@ -33,8 +33,10 @@ services:
     command: server /data --console-address ":9001"
     environment:
       # Silo is a MinIO fork and keeps the MINIO_* variable names.
+      # Single source of truth for the secret: S3_SECRET_KEY is shared by
+      # silo, web and worker — signing client and server must agree.
       MINIO_ROOT_USER: ${S3_ACCESS_KEY:?set in .env}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set in .env}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?set in .env}
     volumes:
       - silo_data:/data
     healthcheck:

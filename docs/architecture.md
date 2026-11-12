@@ -106,7 +106,7 @@ flowchart LR
 `deploy.sh` на чистой Ubuntu:
 
 1. Проверяет/ставит Docker + Docker Compose plugin (official apt-репозиторий).
-2. Копирует `.env.example` → `.env` (если нет), генерирует недостающие секреты (`POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `SECRET_KEY`) и сохраняет в `.env`. Переменная `MINIO_ROOT_PASSWORD` унаследована от MinIO: Silo — его форк и читает те же переменные.
+2. Копирует `.env.example` → `.env` (если нет), генерирует недостающие секреты (`POSTGRES_PASSWORD`, `S3_SECRET_KEY`, `SECRET_KEY`) и сохраняет в `.env`. Один секрет `S3_SECRET_KEY` обслуживает и Silo (через переменную `MINIO_ROOT_PASSWORD` в compose), и клиентов web/worker — иначе подписи не сойдутся.
 3. `docker compose build && docker compose up -d` (web, worker, postgres, redis, silo, nginx).
 4. Ждёт здоровья postgres/silo, применяет миграции (контейнер миграций или `alembic upgrade head` при старте `web`).
 5. Печатает URL приложения (`http://<host>/`) и напоминание про seed: `docker compose --profile seed run --rm seed`.
