@@ -100,3 +100,22 @@ docker compose down -v        # чистый старт (удалит данны
 - Команда: `docker compose down`
 - Ожидание: все контейнеры остановлены.
 - Прислать: вывод (кратко).
+
+## 11. Миграция применяется на пустой БД (регресс после m01611)
+
+- Команды:
+  ```
+  docker compose down -v
+  docker compose up -d --build
+  # подождать ~20 секунд, затем:
+  docker compose ps
+  docker compose logs web --tail 50
+  docker compose logs worker --tail 20
+  docker compose exec postgres psql -U tzyoutube -d tzyoutube -c "\dt"
+  ```
+- Ожидание: web и worker Up (не Restarting); в логах web —
+  `alembic upgrade head` без `ArgumentError`; в логах worker — строка
+  вида `Starting worker: ... 1 functions` (транскод зарегистрирован);
+  все таблицы (users, sessions, videos, video_views, reactions,
+  comments, video_acl, alembic_version) созданы.
+- Прислать: вывод `ps` + хвосты логов web и worker + вывод `\dt`.
