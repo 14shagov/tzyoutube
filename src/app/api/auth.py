@@ -76,13 +76,22 @@ async def get_user_repo(
     return SqlUserRepo(session)
 
 
-def _set_session_cookie(response: Response, session_id: uuid.UUID, ttl_days: int) -> None:
+def _set_session_cookie(
+    response: Response,
+    session_id: uuid.UUID,
+    ttl_days: int,
+    *,
+    secure: bool = False,
+) -> None:
+    # Secure only in production: dev runs plain http on localhost, where
+    # browsers drop Secure cookies (review m01611, task 5).
     response.set_cookie(
         "session_id",
         str(session_id),
         max_age=ttl_days * 24 * 3600,
         httponly=True,
         samesite="lax",
+        secure=secure,
         path="/",
     )
 
@@ -108,9 +117,12 @@ async def login(
     repo: SqlUserRepo = Depends(get_user_repo),
     settings: Settings = Depends(get_settings),
     limiter: RateLimiterProtocol = Depends(get_rate_limiter),
-    x_forwarded_for: Annotated[str, Header(alias="X-Forwarded-For")] = "",
+    x_real_ip: Annotated[str, Header(alias="X-Real-IP")] = "",
 ) -> UserPublic:
-    client_key = x_forwarded_for.split(",")[0].strip() or "unknown"
+    # Trust ONLY X-Real-IP: our nginx overwrites it with $remote_addr.
+    # X-Forwarded-For is append-only upstream and its left entries are
+    # client-spoofable (review m01611, task 5).
+    client_key = x_real_ip.strip() or "unknown"
     try:
         token, user = await auth.login(
             repo,
@@ -125,7 +137,9 @@ async def login(
     except (auth.InvalidCredentials, auth.AccountBlocked):
         # Same generic message: no user enumeration (docs/security.md).
         raise HTTPException(401, "invalid email or password") from None
-    _set_session_cookie(response, token.id, settings.session_ttl_days)
+    _set_session_cookie(
+        response, token.id, settings.session_ttl_days, secure=settings.is_production
+    )
     return UserPublic.model_validate(user, from_attributes=True)
 
 
