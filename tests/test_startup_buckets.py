@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from types import TracebackType
+from typing import Self
 from unittest.mock import create_autospec
 
 from minio import Minio
@@ -34,7 +35,7 @@ class _BucketProbe:
         # Depends/module-level bindings need patching at the using module).
         monkeypatch.setattr(main_module, "get_storage", lambda: probe_storage)
 
-    def __enter__(self) -> "_BucketProbe":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(
