@@ -3,6 +3,7 @@
 from fastapi import Depends, FastAPI
 
 from app.api import auth as auth_api
+from app.api import videos as videos_api
 from app.api.deps import require_role
 from app.core.config import get_settings
 from app.models import User
@@ -25,6 +26,7 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(auth_api.router)
+    app.include_router(videos_api.router)
 
     # Temporary demo endpoint to prove the role guard wiring works.
     # Real admin endpoints arrive in stage 4 (plan 4.4).

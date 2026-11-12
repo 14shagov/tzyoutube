@@ -12,6 +12,7 @@ dependencies = [
     "minio>=7.2.20",
     "pydantic-settings>=2.16.2",
     "pydantic[email]>=2.14.3",
+    "python-multipart>=0.0.33",
     "redis>=5.3.1",
     "sqlalchemy[asyncio]>=2.1.8",
     "uvicorn[standard]>=0.54.0",
@@ -44,4 +45,9 @@ extend-exclude = ["migrations/versions"]
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI idiom: Depends(...)/require_role(...) in parameter defaults are
 # evaluated once at router registration and are the documented pattern.
-extend-immutable-calls = ["fastapi.Depends", "app.api.deps.require_role"]
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.File",
+    "fastapi.Form",
+    "app.api.deps.require_role",
+]
