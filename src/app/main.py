@@ -5,6 +5,7 @@ from fastapi import Depends, FastAPI
 from app.api import auth as auth_api
 from app.api import videos as videos_api
 from app.api.deps import require_role
+from app.api.security import CsrfMiddleware
 from app.core.config import get_settings
 from app.models import User
 
@@ -20,6 +21,10 @@ def create_app() -> FastAPI:
         docs_url="/docs",
         redoc_url=None,
     )
+
+    # CSRF: outermost middleware, rejects cross-origin state-changing
+    # browser requests (docs/security.md).
+    app.add_middleware(CsrfMiddleware)
 
     @app.get("/health")
     async def health() -> dict[str, str]:
