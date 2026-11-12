@@ -27,9 +27,27 @@ ALLOWED_ORIGINS=https://video.example.com
 Several addresses: separate with commas. After changing `.env`, restart:
 `docker compose up -d`.
 
+## Public S3 endpoint (presigned video links)
+
+Presigned video URLs are signed for the PUBLIC address the browser
+uses, not for the internal `silo:9000`. It is controlled by
+`S3_PUBLIC_ENDPOINT` (default `localhost`, port 80):
+
+```bash
+# in .env on the VM — same host as ALLOWED_ORIGINS, without scheme:
+S3_PUBLIC_ENDPOINT=203.0.113.10
+# or a domain:
+S3_PUBLIC_ENDPOINT=video.example.com
+```
+
+nginx (`/videos/`, `/thumbnails/`) forwards the browser's `Host` header
+to Silo as-is, so the SigV4 signature stays valid. Signing itself is
+offline — no network call to the storage.
+
 `deploy.sh` (stage 5) will copy `.env.example` to `.env` and generate
-secrets; set `ALLOWED_ORIGINS` in the generated `.env` to your public
-address before (or after) the first `docker compose up -d`.
+secrets; set `ALLOWED_ORIGINS` and `S3_PUBLIC_ENDPOINT` in the
+generated `.env` to your public address before (or after) the first
+`docker compose up -d`.
 
 ## Cookie Secure flag
 
