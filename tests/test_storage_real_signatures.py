@@ -7,7 +7,6 @@ the REAL library signatures via create_autospec(Minio).
 """
 
 import tempfile
-from pathlib import Path
 from unittest.mock import create_autospec
 
 import pytest
@@ -35,11 +34,18 @@ class TestPutMatchesRealSignature:
 
     def test_put_stream_passes_length_and_part_size(self, real_client) -> None:
         storage = Storage(real_client, presigned_ttl=60)
-        with tempfile.NamedTemporaryFile(suffix=".mp4") as tmp:
-            tmp.write(b"streamed-bytes")
-            tmp.flush()
-            size = Path(tmp.name).stat().st_size
-            obj = storage.put_stream(BUCKETS["raw"], "raw/y.mp4", tmp.name)
+        # Write WITHOUT the file handle held open (Windows: an open
+        # NamedTemporaryFile cannot be reopened by Storage).
+        import os
+
+        fd, path = tempfile.mkstemp(suffix=".mp4")
+        try:
+            os.write(fd, b"streamed-bytes")
+            os.close(fd)
+            size = os.stat(path).st_size
+            obj = storage.put_stream(BUCKETS["raw"], "raw/y.mp4", path)
+        finally:
+            os.unlink(path)
         assert obj.size == size
         real_client.put_object.assert_called_once()
 

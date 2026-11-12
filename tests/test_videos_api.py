@@ -37,6 +37,16 @@ class FakeStorage:
         self.put_calls.append((bucket, key))
         return object()
 
+    def put_stream(self, bucket: str, key: str, path: str) -> object:
+        from pathlib import Path
+
+        self.put_calls.append((bucket, key))
+
+        class _Obj:
+            size = Path(path).stat().st_size
+
+        return _Obj()
+
     def presigned_get(self, bucket: str, key: str, ttl_seconds=None) -> str:
         return f"http://example.com/{bucket}/{key}"
 

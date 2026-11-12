@@ -4,7 +4,10 @@ Auth via get_current_user; storage/queue/repo injected as dependencies
 so tests can override them with fakes.
 """
 
+import asyncio
+import tempfile
 import uuid
+from pathlib import Path
 
 from fastapi import APIRouter, Cookie, Depends, File, Form, HTTPException, Response, UploadFile
 from fastapi import status as http_status
@@ -355,42 +358,66 @@ async def upload_video(
     if not title.strip():
         raise HTTPException(422, "title is required")
 
-    payload = await file.read()
-    args = videos_svc.UploadArgs(
-        filename=file.filename or "",
-        data=_Seekable(payload),
-        declared_size=len(payload),
-        max_size=settings.max_upload_size,
-    )
+    # Stream the upload to a temp file, enforcing the size limit while
+    # reading — the file never sits whole in memory (m02086 task 2).
+    max_size = settings.max_upload_size
+    chunk_limit = 1024 * 1024  # 1 MiB chunks
+    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+        tmp_path = tmp.name
+        total = 0
+        while True:
+            chunk = await file.read(chunk_limit)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > max_size:
+                tmp.close()
+                Path(tmp_path).unlink(missing_ok=True)
+                raise HTTPException(413, "size over limit")
+            tmp.write(chunk)
+
     try:
-        ext = videos_svc.validate_upload(args)
-    except videos_svc.UploadRejected as exc:
-        reason = str(exc)
-        if "size" in reason:
-            raise HTTPException(413, reason) from None
-        raise HTTPException(415, reason) from None
+        head = await asyncio.to_thread(_read_head, tmp_path)
+        args = videos_svc.UploadArgs(
+            filename=file.filename or "",
+            data=_Seekable(head),
+            declared_size=total,
+            max_size=max_size,
+        )
+        try:
+            ext = videos_svc.validate_upload(args)
+        except videos_svc.UploadRejected as exc:
+            reason = str(exc)
+            if "size" in reason:
+                raise HTTPException(413, reason) from None
+            raise HTTPException(415, reason) from None
 
-    video_id = uuid.uuid4()
-    raw_key = videos_svc.build_raw_key(video_id, ext)
-    storage.put(BUCKETS["raw"], raw_key, payload)
+        video_id = uuid.uuid4()
+        raw_key = videos_svc.build_raw_key(video_id, ext)
+        # minio-py is blocking: run the upload in a worker thread.
+        obj = await asyncio.to_thread(
+            storage.put_stream, BUCKETS["raw"], raw_key, tmp_path
+        )
 
-    video = videos_svc.new_video(
-        user_id=user.id,
-        title=title.strip(),
-        description=description.strip(),
-        raw_key=raw_key,
-        size_bytes=len(payload),
-    )
-    video.id = video_id
-    created = await repo.create(video)
-    await queue.enqueue_transcode(created.id)
-    return VideoOut(
-        id=created.id,
-        title=created.title,
-        description=created.description,
-        status=created.status,
-        is_private=created.is_private,
-    )
+        video = videos_svc.new_video(
+            user_id=user.id,
+            title=title.strip(),
+            description=description.strip(),
+            raw_key=raw_key,
+            size_bytes=obj.size,
+        )
+        video.id = video_id
+        created = await repo.create(video)
+        await queue.enqueue_transcode(created.id)
+        return VideoOut(
+            id=created.id,
+            title=created.title,
+            description=created.description,
+            status=created.status,
+            is_private=created.is_private,
+        )
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
 
 
 class _Seekable:
@@ -404,3 +431,9 @@ class _Seekable:
 
     def seek(self, pos: int) -> None:
         self._buf.seek(pos)
+
+
+def _read_head(path: str) -> bytes:
+    """Blocking helper: first bytes for magic-byte sniffing."""
+    with open(path, "rb") as fh:
+        return fh.read(32)
