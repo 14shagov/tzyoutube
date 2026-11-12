@@ -98,8 +98,10 @@ def _set_session_cookie(
 
 @router.post("/register", response_model=UserPublic, status_code=http_status.HTTP_201_CREATED)
 async def register(
+    response: Response,
     payload: UserRegister,
     repo: SqlUserRepo = Depends(get_user_repo),
+    settings: Settings = Depends(get_settings),
 ) -> UserPublic:
     try:
         user = await auth.register(repo, payload.email, payload.password, payload.channel_name)
@@ -107,6 +109,14 @@ async def register(
         raise HTTPException(409, "email already registered") from None
     except auth.ChannelNameTaken:
         raise HTTPException(409, "channel name already taken") from None
+    # Registration opens the session right away (m02086 task 5): the
+    # "register → upload" flow must not require a separate login step.
+    token = await repo.create_session(
+        user.id, auth.session_expiry(settings.session_ttl_days)
+    )
+    _set_session_cookie(
+        response, token.id, settings.session_ttl_days, secure=settings.cookie_secure
+    )
     return UserPublic.model_validate(user, from_attributes=True)
 
 

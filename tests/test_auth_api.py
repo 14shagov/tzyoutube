@@ -132,8 +132,10 @@ def test_session_expiry_is_enforced(client: TestClient) -> None:
     client.post("/auth/login", json={"email": "exp@example.com", "password": "password123"})
     app = client.app
     repo = app.dependency_overrides[auth_api.get_user_repo]()
-    session = next(iter(repo.sessions.values()))
-    session.expires_at = auth.utc_now() - timedelta(seconds=1)
+    # Register also opens a session now: two sessions exist. Expire the
+    # one the client actually holds (the newest, from /auth/login).
+    newest = max(repo.sessions.values(), key=lambda s: s.created_at)
+    newest.expires_at = auth.utc_now() - timedelta(seconds=1)
     assert client.get("/auth/me").status_code == 401
 
 
