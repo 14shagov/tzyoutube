@@ -16,8 +16,12 @@ depends_on = None
 
 
 def _uuid() -> sa.Column:
-    return sa.Column(PGUUID(as_uuid=True), primary_key=True,
-                     server_default=sa.text("gen_random_uuid()"))
+    # Named explicitly: an unnamed Column raises ArgumentError when added
+    # to a Table (caught on the real stack, now guarded by offline tests).
+    return sa.Column(
+        "id", PGUUID(as_uuid=True), primary_key=True,
+        server_default=sa.text("gen_random_uuid()"),
+    )
 
 
 def upgrade() -> None:
