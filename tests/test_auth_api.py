@@ -5,6 +5,7 @@ The HTTP layer is tested through the ASGI app with a fake database
 needed (ADR-005: services depend on interfaces, not HTTP or concrete DB).
 """
 
+import uuid
 from datetime import timedelta
 
 import pytest
@@ -132,10 +133,11 @@ def test_session_expiry_is_enforced(client: TestClient) -> None:
     client.post("/auth/login", json={"email": "exp@example.com", "password": "password123"})
     app = client.app
     repo = app.dependency_overrides[auth_api.get_user_repo]()
-    # Register also opens a session now: two sessions exist. Expire the
-    # one the client actually holds (the newest, from /auth/login).
-    newest = max(repo.sessions.values(), key=lambda s: s.created_at)
-    newest.expires_at = auth.utc_now() - timedelta(seconds=1)
+    # Expire the session the client actually holds (the login cookie), not
+    # whichever the repo stored last: with fast test hashing both sessions
+    # can share one clock tick, so ordering by created_at is not reliable.
+    held = repo.sessions[uuid.UUID(client.cookies["session_id"])]
+    held.expires_at = auth.utc_now() - timedelta(seconds=1)
     assert client.get("/auth/me").status_code == 401
 
 
