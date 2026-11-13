@@ -7,7 +7,7 @@ the REAL library signatures via create_autospec(Minio).
 """
 
 import tempfile
-from unittest.mock import create_autospec
+from unittest.mock import call, create_autospec
 
 import pytest
 from minio import Minio
@@ -69,9 +69,20 @@ class TestEnsureBuckets:
         storage = Storage(real_client, presigned_ttl=60)
         storage.ensure_buckets()
         assert real_client.make_bucket.call_count == len(BUCKETS)
+        # Sequence matters: check first, create only what is missing, one
+        # probe per bucket in BUCKETS order.
+        expected = []
+        for bucket in BUCKETS.values():
+            expected.append(call.bucket_exists(bucket))
+            expected.append(call.make_bucket(bucket))
+        assert real_client.method_calls == expected
 
     def test_ensure_buckets_skips_existing(self, real_client) -> None:
         real_client.bucket_exists.return_value = True
         storage = Storage(real_client, presigned_ttl=60)
         storage.ensure_buckets()
         real_client.make_bucket.assert_not_called()
+        # Only the probes happened, in BUCKETS order, nothing else.
+        assert real_client.method_calls == [
+            call.bucket_exists(bucket) for bucket in BUCKETS.values()
+        ]
