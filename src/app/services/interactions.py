@@ -21,7 +21,9 @@ class InvalidComment(Exception):
 
 
 class ViewRepo(Protocol):
-    async def recent_view(self, video_id, fingerprint, since: datetime): ...
+    async def recent_view(self, video_id, fingerprint, since: datetime) -> bool:
+        """True when this viewer was already seen within the window."""
+        ...
 
     async def add_view(self, video_id, user_id, fingerprint: str) -> None: ...
 
@@ -59,7 +61,7 @@ async def register_view(
     """
     now = clock() if clock is not None else datetime.now(tz=None)
     since = now - VIEW_DEDUP_WINDOW
-    if await repo.recent_view(video_id, fingerprint, since) is not None:
+    if await repo.recent_view(video_id, fingerprint, since):
         return False
     user_id = user.id if user is not None else None
     await repo.add_view(video_id, user_id, fingerprint)
