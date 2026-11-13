@@ -106,34 +106,34 @@ def get_upload_settings() -> Settings:
 # implementations (added with the feed/search queries in this stage).
 
 
-def get_feed_repo():
+def get_feed_repo(session: AsyncSession = Depends(get_db_session)):
     from app.api.repos import SqlFeedRepo
 
-    return SqlFeedRepo()
+    return SqlFeedRepo(session)
 
 
-def get_view_repo():
+def get_view_repo(session: AsyncSession = Depends(get_db_session)):
     from app.api.repos import SqlViewRepo
 
-    return SqlViewRepo()
+    return SqlViewRepo(session)
 
 
-def get_reaction_repo():
+def get_reaction_repo(session: AsyncSession = Depends(get_db_session)):
     from app.api.repos import SqlReactionRepo
 
-    return SqlReactionRepo()
+    return SqlReactionRepo(session)
 
 
-def get_comment_repo():
+def get_comment_repo(session: AsyncSession = Depends(get_db_session)):
     from app.api.repos import SqlCommentRepo
 
-    return SqlCommentRepo()
+    return SqlCommentRepo(session)
 
 
-def get_acl():
+def get_acl(session: AsyncSession = Depends(get_db_session)):
     from app.api.repos import SqlAclRepo
 
-    return SqlAclRepo()
+    return SqlAclRepo(session)
 
 
 class VideoCard(BaseModel):
