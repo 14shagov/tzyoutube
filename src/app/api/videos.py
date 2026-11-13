@@ -268,7 +268,9 @@ async def register_view(
     if video is None or not await access.can_view_with_acl(video, user, acl):
         raise HTTPException(404, "not found")
     fingerprint = str(user.id) if user is not None else _guest_fingerprint(response, guest_id)
-    await interactions.register_view(view_repo, video_id, user.id if user else None, fingerprint)
+    # Contract: the service takes the user OBJECT (None for guests) and
+    # reads user.id itself — passing user.id here would make it user.id.id.
+    await interactions.register_view(view_repo, video_id, user, fingerprint)
 
 
 @router.post("/{video_id}/reactions", response_model=ReactionOut)
