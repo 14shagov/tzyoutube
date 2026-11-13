@@ -16,6 +16,7 @@ import re
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -126,6 +127,12 @@ def test_copy_sources_exist_and_are_tracked() -> None:
     or a fresh clone may lack them), breaking `docker compose build` far
     from the change that caused it. This guard fails fast in unit tests.
     """
+    if not (PROJECT_ROOT / ".git").exists():
+        pytest.skip(
+            "no .git directory: sources cannot be verified as git-tracked "
+            "outside a repository checkout (e.g. an exported tree); "
+            "run from a real clone to enable this guard"
+        )
     text = _dockerfile()
     copy_lines = [
         line for line in text.splitlines()
