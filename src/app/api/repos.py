@@ -82,15 +82,20 @@ class SqlReactionRepo:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def get(self, user_id, video_id):
+    async def _get_obj(self, user_id, video_id) -> Reaction | None:
         stmt = select(Reaction).where(
             Reaction.user_id == user_id, Reaction.video_id == video_id
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get(self, user_id, video_id) -> int | None:
+        """Protocol contract: the reaction VALUE (1/-1) or None — not the row."""
+        row = await self._get_obj(user_id, video_id)
+        return row.value if row is not None else None
+
     async def upsert(self, user_id, video_id, value):
-        existing = await self.get(user_id, video_id)
+        existing = await self._get_obj(user_id, video_id)
         if existing:
             existing.value = value
         else:
