@@ -23,6 +23,7 @@ dev = [
     "httpx>=0.28.1",
     "pytest>=9.2.0",
     "pytest-asyncio>=1.4.1.post1",
+    "pytest-timeout>=2.4.0",
     "ruff>=0.17.4",
 ]
 
@@ -31,6 +32,11 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+# A hung test must FAIL, not hang the run (docs/status.md: the lifespan
+# storage stall added ~30s per entry and a 28-minute suite before the
+# conftest stub). thread method: Windows has no SIGALRM.
+timeout = 60
+timeout_method = "thread"
 markers = [
     "integration: tests that need Docker services (run only with owner approval)",
 ]
