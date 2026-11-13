@@ -167,13 +167,13 @@ class ReactionOut(BaseModel):
 
 class CommentIn(BaseModel):
     text: str
-    parent_id: int | None = None
+    parent_id: uuid.UUID | None = None
 
 
 class CommentOut(BaseModel):
-    id: int
+    id: uuid.UUID
     text: str
-    parent_id: int | None
+    parent_id: uuid.UUID | None
 
 
 class CommentList(BaseModel):
@@ -322,6 +322,9 @@ async def add_comment(
         )
     except interactions.InvalidComment:
         raise HTTPException(422, "comment text must be 1..2000 chars") from None
+    except ValueError:
+        # SqlCommentRepo rejects a missing or nested parent with ValueError.
+        raise HTTPException(422, "invalid parent_id") from None
     return CommentOut(id=comment.id, text=comment.text, parent_id=comment.parent_id)
 
 

@@ -96,7 +96,7 @@ class FakeCommentRepo:
 
     async def add(self, video_id, user_id, text, parent_id=None):
         comment = SimpleNamespace(
-            id=len(self.comments), video_id=video_id, user_id=user_id,
+            id=uuid.uuid4(), video_id=video_id, user_id=user_id,
             text=text, parent_id=parent_id,
         )
         self.comments.append(comment)
