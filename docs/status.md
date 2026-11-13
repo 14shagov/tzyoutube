@@ -116,3 +116,50 @@
 - Ручные проверки: manual-checks.md п.14 (ключевая — вся цепочка
   загрузки: 202 → processing → ready → play_url открывается), п.12-13.
 - Затем этап 3 (каналы, подписки, приватность, плейлисты, удаление).
+
+## Ревью (независимый список замечаний), группа A — сделано 2026-11-13
+
+По одному коммиту, каждый с красным тестом перед фиксом; после группы
+`uv run pytest -q` = 178 passed, `uv run ruff check .` чист.
+
+- A1 `4f90a22`: провайдеры `get_feed_repo/get_view_repo/get_reaction_repo/
+  get_comment_repo/get_acl` создавали SQL-репозитории без сессии → TypeError
+  → 500 на всех viewing-эндпоинтах. Теперь берут
+  `session: AsyncSession = Depends(get_db_session)`. Страж
+  `tests/test_dependency_guard.py` обходит все 14 APIRoute (в FastAPI 0.162
+  include_router прячет маршруты в `_IncludedRouter.original_router`) и
+  резолвит зависимости с переопределением только сессии и внешних клиентов.
+- A2 `b29a4e1`: `SqlViewRepo.recent_view` возвращает bool, а сервис проверял
+  `is not None` → просмотр никогда не засчитывался. Контракт приведён к
+  bool (`if await repo.recent_view(...)`), протокол `-> bool`; тесты: первый
+  просмотр засчитан, повтор в 24 ч нет, после окна снова да.
+- A3 `e2c1a5c`: эндпоинт `/view` передавал `user.id` (UUID), сервис читал
+  `user.id` → AttributeError → 500 у залогиненных. Теперь передаётся объект
+  user (None для гостя); тест с реальным `app.models.User`.
+- A4 `f4c53a0`: `SqlReactionRepo.get` возвращал объект Reaction вместо
+  `int | None` по протоколу → `current == value` всегда False, повторный
+  лайк не снимался. `get` возвращает `row.value`, upsert обновляет через
+  `_get_obj`. Сценарии: лайк / повтор (снятие) / лайк→дизлайк / 0 (снятие) /
+  счётчики.
+- A5+A6 `8a08ea1`: `CommentIn.parent_id`/`CommentOut.id,parent_id` были `int`,
+  а `Comment.id` — PGUUID → ValidationError → 500. Схемы переведены на
+  `uuid.UUID`. Аудит остальных контрактов (A6): протоколы UserRepo /
+  AclRepo / RateLimiter / Storage / Queue / VideoCard / FeedItem / VideoOut /
+  ReactionOut согласованы с реализациями; единственное найденное
+  рассогласование — `SqlCommentRepo.add` бросает ValueError("invalid
+  parent_id"), теперь маппится в 422 (а не 500) на эндпоинте.
+
+### Ручные проверки после группы A (владелец, Docker) — manual-checks.md
+
+- п.8 (ключевая для группы A): лента/поиск/view → 204, реакция
+  `{"likes":1,"dislikes":0}` и повторный POST `{"value":1}` →
+  `{"likes":0,"dislikes":0}` (A4), комментарий 201 с UUID `id` и есть в
+  списке (A5); повторный view в течение 24 ч не увеличивает `view_count`
+  (A2 — проверить SELECT по video_views/view_count).
+- п.6-7, п.14: цепочка загрузки и play_url (регресс-проверка, A1 мог
+  задеть card/feed).
+- п.5, п.12-13: auth/CSRF без регрессий.
+
+### Дальше
+
+- Группа B (B1-B7) — только по команде владельца после паузы.
