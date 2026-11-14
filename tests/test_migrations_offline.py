@@ -43,3 +43,13 @@ def test_offline_ddl_has_no_inline_errors() -> None:
     assert proc.returncode == 0, f"offline upgrade failed:\n{proc.stderr}"
     for marker in ("Traceback", "ArgumentError", "NameError"):
         assert marker not in proc.stderr, f"error marker {marker!r} in stderr"
+
+
+def test_offline_ddl_enables_pg_trgm_and_gin_title_index() -> None:
+    """D1: trigram search support — extension + GIN index on videos.title."""
+    proc = _run_alembic_offline()
+    assert proc.returncode == 0, f"offline upgrade failed:\n{proc.stderr}"
+    sql = proc.stdout.upper()
+    assert "CREATE EXTENSION IF NOT EXISTS PG_TRGM" in sql
+    assert "USING GIN" in sql and "GIN_TRGM_OPS" in sql
+    assert "IX_VIDEOS_TITLE_TRGM" in sql
