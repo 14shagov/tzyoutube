@@ -18,17 +18,25 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg curl \
     && rm -rf /var/lib/apt/lists/*
 
+# C4: dedicated non-root system user; the container never runs as root.
+RUN groupadd --system app \
+    && useradd --system --gid app --home-dir /srv/app --shell /usr/sbin/nologin app
+
 # Install dependencies first (cached layer; --no-dev keeps ruff/pytest
 # out of the runtime image). --no-install-project: only third-party deps
 # here; project code is used via PYTHONPATH, not installed.
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-install-project --no-dev
+RUN uv sync --frozen --no-install-project --no-dev \
+    # the venv and workdir were built as root — hand them to the app user
+    && chown -R app:app /srv/app
 
-# Copy the project code (invalidates only the last layers).
-COPY src ./src
-COPY migrations ./migrations
-COPY alembic.ini ./
-COPY scripts ./scripts
+# Copy the project code (invalidates only the last layers), owned by app.
+COPY --chown=app:app src ./src
+COPY --chown=app:app migrations ./migrations
+COPY --chown=app:app alembic.ini ./
+COPY --chown=app:app scripts ./scripts
+
+USER app
 
 EXPOSE 8000
 

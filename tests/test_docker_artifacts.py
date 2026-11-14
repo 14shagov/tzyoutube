@@ -103,8 +103,43 @@ def test_dockerfile_deps_layer_before_code() -> None:
     code changes do not invalidate the dependency cache layer."""
     text = _dockerfile()
     sync_pos = text.index("uv sync --frozen")
-    code_pos = text.index("COPY src ./src")
-    assert sync_pos < code_pos, "deps layer must come before the code COPY layers"
+    m = re.search(r"^COPY\s+(--\S+\s+)*src\s+\./src\s*$", text, re.MULTILINE)
+    assert m, "code COPY of ./src not found"
+    assert sync_pos < m.start(), "deps layer must come before the code COPY layers"
+
+
+def test_dockerfile_runs_as_non_root() -> None:
+    """C4: the container must not run as root — dedicated system user,
+    ownership fix after uv sync, USER app before EXPOSE/CMD."""
+    text = _dockerfile()
+    assert re.search(r"groupadd\s+--system\s+\S+", text), "no system groupadd"
+    assert re.search(r"useradd\s+--system\s+\S+", text), "no system useradd"
+    user_lines = [
+        (i, line) for i, line in enumerate(text.splitlines(), 1)
+        if re.match(r"^USER\s+", line)
+    ]
+    assert user_lines, "no USER instruction — container would run as root"
+    for _i, line in user_lines:
+        assert line.split()[1] != "root", f"line {_i}: USER root is forbidden (C4)"
+    # USER must come after the last COPY so the copied code is already owned.
+    last_copy = max(
+        m.start() for m in re.finditer(r"^COPY\s", text, re.MULTILINE)
+    )
+    user_pos = re.search(r"^USER\s+\S+\s*$", text, re.MULTILINE)
+    assert user_pos and user_pos.start() > last_copy, "USER must follow the code COPY layers"
+    # The venv + workdir built as root must be handed to the app user.
+    assert re.search(r"chown\s+-R\s+\S+\s+/srv/app", text), (
+        "missing chown of /srv/app after uv sync (C4)"
+    )
+    # Code copies must be owned by the runtime user from the start. (The
+    # deps COPY of pyproject/uv.lock is covered by the chown -R above.)
+    code_copies = [
+        line for line in text.splitlines()
+        if re.match(r"^COPY\s", line) and "--from=" not in line and "pyproject" not in line
+    ]
+    assert code_copies, "no code COPY layers found — parser drift?"
+    for line in code_copies:
+        assert "--chown=" in line, f"code COPY without --chown: {line}"
 
 
 def test_dockerfile_uses_uv() -> None:
