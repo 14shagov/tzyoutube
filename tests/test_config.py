@@ -9,7 +9,8 @@ def test_defaults() -> None:
     s = Settings(_env_file=None)
     assert s.app_env == "dev"
     assert s.max_upload_size == 512 * 1024 * 1024
-    assert s.presigned_ttl_seconds == 4 * 3600
+    assert s.presigned_ttl_seconds == 3600  # public videos
+    assert s.presigned_ttl_private_seconds == 900  # private videos: short-lived links
     assert s.session_ttl_days == 14
 
 
