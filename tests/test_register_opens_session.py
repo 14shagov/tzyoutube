@@ -64,7 +64,7 @@ class TestRegisterOpensSession:
 
 
 class _FakeStorage:
-    def put_stream(self, bucket, key, path):
+    def put_stream(self, bucket, key, path, content_type=None):
         import os
 
         class _Obj:

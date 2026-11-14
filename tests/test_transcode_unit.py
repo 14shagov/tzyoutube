@@ -40,7 +40,8 @@ class FakeStorage:
         with open(dest_path, "wb") as f:
             f.write(b"FAKERAW")
 
-    def upload_file(self, bucket: str, key: str, path: str) -> None:
+    def upload_file(self, bucket: str, key: str, path: str,
+                    content_type: str | None = None) -> None:
         self.tempfiles[f"{bucket}/{key}"] = path
 
 

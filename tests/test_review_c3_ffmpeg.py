@@ -110,8 +110,8 @@ class _Storage:
         with open(dest_path, "wb") as f:
             f.write(b"RAW")
 
-    def upload_file(self, bucket, key, path):
-        self.uploads.append((bucket, key))
+    def upload_file(self, bucket, key, path, content_type=None):
+        self.uploads.append((bucket, key, content_type))
 
 
 class _Runner:
@@ -169,4 +169,5 @@ class TestRunTranscodeProbeGate:
         _, status, fields = repo.updates[-1]
         assert status == "ready"
         assert fields["duration_seconds"] == 42
-        assert ("videos", f"videos/{vid}.mp4") in storage.uploads
+        assert ("videos", f"videos/{vid}.mp4", "video/mp4") in storage.uploads
+        assert ("thumbnails", f"thumbnails/{vid}.jpg", "image/jpeg") in storage.uploads

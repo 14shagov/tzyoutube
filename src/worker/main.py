@@ -78,8 +78,12 @@ class _TaskStorage:
     def download_to(self, bucket: str, key: str, dest_path: str) -> None:
         self._client.fget_object(bucket, key, dest_path)
 
-    def upload_file(self, bucket: str, key: str, path: str) -> None:
-        self._client.fput_object(bucket, key, path)
+    def upload_file(self, bucket: str, key: str, path: str,
+                    content_type: str | None = None) -> None:
+        kwargs = {}
+        if content_type is not None:
+            kwargs["content_type"] = content_type
+        self._client.fput_object(bucket, key, path, **kwargs)
 
 
 async def _ffmpeg_runner(args: list[str]) -> tuple[bool, str]:

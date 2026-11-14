@@ -103,7 +103,8 @@ class _Storage:
         with open(dest_path, "wb") as f:
             f.write(b"RAW")
 
-    def upload_file(self, bucket: str, key: str, path: str) -> None:
+    def upload_file(self, bucket: str, key: str, path: str,
+                    content_type: str | None = None) -> None:
         pass
 
 

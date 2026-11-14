@@ -47,11 +47,15 @@ class S3ClientProtocol(Protocol):
         object_name: str,
         data: IO[Any],
         length: int,
+        content_type: str = "application/octet-stream",
         part_size: int = 0,
         **kwargs: Any,
     ) -> Any: ...
 
-    def fput_object(self, bucket_name: str, object_name: str, file_path: str, **kwargs: Any) -> Any: ...
+    def fput_object(
+        self, bucket_name: str, object_name: str, file_path: str,
+        content_type: str = "application/octet-stream", **kwargs: Any,
+    ) -> Any: ...
 
     def fget_object(self, bucket_name: str, object_name: str, file_path: str, **kwargs: Any) -> Any: ...
 
@@ -83,24 +87,41 @@ class Storage:
 
     # -- writes -----------------------------------------------------------
 
-    def put(self, bucket: str, key: str, data: bytes) -> StorageObject:
+    def put(self, bucket: str, key: str, data: bytes,
+            content_type: str | None = None) -> StorageObject:
         """Small in-memory payloads (tests, thumbnails)."""
         import io
 
-        self._s3.put_object(bucket, key, io.BytesIO(data), len(data))
+        kwargs: dict[str, Any] = {}
+        if content_type is not None:
+            kwargs["content_type"] = content_type
+        self._s3.put_object(bucket, key, io.BytesIO(data), len(data), **kwargs)
         return StorageObject(bucket, key, len(data))
 
-    def put_stream(self, bucket: str, key: str, path: str) -> StorageObject:
-        """Stream a file object by path; length known from the file."""
+    def put_stream(self, bucket: str, key: str, path: str,
+                   content_type: str | None = None) -> StorageObject:
+        """Stream a file object by path; length known from the file.
+
+        content_type is mandatory for anything a browser will open: without
+        it S3 stores application/octet-stream and the video downloads instead
+        of playing.
+        """
         size = os.stat(path).st_size
+        kwargs: dict[str, Any] = {"part_size": _PART_SIZE}
+        if content_type is not None:
+            kwargs["content_type"] = content_type
         with open(path, "rb") as fh:
-            self._s3.put_object(bucket, key, fh, size, part_size=_PART_SIZE)
+            self._s3.put_object(bucket, key, fh, size, **kwargs)
         return StorageObject(bucket, key, size)
 
-    def put_file(self, bucket: str, key: str, path: str) -> StorageObject:
+    def put_file(self, bucket: str, key: str, path: str,
+                 content_type: str | None = None) -> StorageObject:
         """File upload via fput (multipart handled by the library)."""
         size = os.stat(path).st_size
-        self._s3.fput_object(bucket, key, path)
+        kwargs: dict[str, Any] = {}
+        if content_type is not None:
+            kwargs["content_type"] = content_type
+        self._s3.fput_object(bucket, key, path, **kwargs)
         return StorageObject(bucket, key, size)
 
     # -- reads ------------------------------------------------------------

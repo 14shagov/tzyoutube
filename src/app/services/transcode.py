@@ -60,7 +60,8 @@ class TranscodeRepo(Protocol):
 class TranscodeStorage(Protocol):
     def download_to(self, bucket: str, key: str, dest_path: str) -> None: ...
 
-    def upload_file(self, bucket: str, key: str, path: str) -> None: ...
+    def upload_file(self, bucket: str, key: str, path: str,
+                    content_type: str | None = None) -> None: ...
 
 
 AsyncRunner = Callable[[list[str]], Awaitable[tuple[bool, str]]]
@@ -197,12 +198,17 @@ async def run_transcode(
                 return None
             duration = info.duration_seconds
 
+        # Task 2: explicit content_type — a stored video must be served as
+        # video/mp4 (else browsers download instead of playing) and the
+        # thumbnail as image/jpeg.
         await asyncio.to_thread(
-            storage.upload_file, "videos", f"videos/{video_id}.mp4", str(out_path)
+            storage.upload_file, "videos", f"videos/{video_id}.mp4", str(out_path),
+            "video/mp4",
         )
         if thumb_path.exists():
             await asyncio.to_thread(
-                storage.upload_file, "thumbnails", f"thumbnails/{video_id}.jpg", str(thumb_path)
+                storage.upload_file, "thumbnails", f"thumbnails/{video_id}.jpg",
+                str(thumb_path), "image/jpeg",
             )
 
         await asyncio.to_thread(

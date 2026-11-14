@@ -439,7 +439,8 @@ async def upload_video(
         raw_key = videos_svc.build_raw_key(video_id, ext)
         # minio-py is blocking: run the upload in a worker thread.
         obj = await asyncio.to_thread(
-            storage.put_stream, BUCKETS["raw"], raw_key, tmp_path
+            storage.put_stream, BUCKETS["raw"], raw_key, tmp_path,
+            videos_svc.content_type_for_ext(ext),
         )
 
         video = videos_svc.new_video(

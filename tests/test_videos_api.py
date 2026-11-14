@@ -33,11 +33,13 @@ class FakeStorage:
     def __init__(self) -> None:
         self.put_calls: list[tuple[str, str]] = []
 
-    def put(self, bucket: str, key: str, data: bytes) -> object:
+    def put(self, bucket: str, key: str, data: bytes,
+            content_type: str | None = None) -> object:
         self.put_calls.append((bucket, key))
         return object()
 
-    def put_stream(self, bucket: str, key: str, path: str) -> object:
+    def put_stream(self, bucket: str, key: str, path: str,
+                   content_type: str | None = None) -> object:
         from pathlib import Path
 
         self.put_calls.append((bucket, key))

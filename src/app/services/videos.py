@@ -18,6 +18,20 @@ class UploadRejected(Exception):
 
 ALLOWED_EXTENSIONS = {"mp4", "webm", "mkv", "mov", "avi"}
 
+# Task 2: every stored object gets an explicit content_type — without it S3
+# defaults to application/octet-stream and browsers download instead of play.
+CONTENT_TYPE_BY_EXT: dict[str, str] = {
+    "mp4": "video/mp4",
+    "mov": "video/quicktime",
+    "webm": "video/webm",
+    "mkv": "video/x-matroska",
+    "avi": "video/x-msvideo",
+}
+
+
+def content_type_for_ext(ext: str) -> str:
+    return CONTENT_TYPE_BY_EXT.get(ext, "application/octet-stream")
+
 # How many leading bytes are needed for magic-byte detection.
 SNIFF_LEN = 32
 
@@ -93,7 +107,8 @@ class VideoRepo(Protocol):
 class RawStorage(Protocol):
     """Minimal storage interface needed by the upload flow."""
 
-    def put(self, bucket: str, key: str, data: bytes) -> object: ...
+    def put(self, bucket: str, key: str, data: bytes,
+            content_type: str | None = None) -> object: ...
 
 
 class TranscodeQueue(Protocol):
