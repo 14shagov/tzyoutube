@@ -4,7 +4,7 @@ Maps domain errors from app.services.auth to HTTP responses; owns cookies.
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Response
@@ -102,7 +102,19 @@ async def register(
     payload: UserRegister,
     repo: SqlUserRepo = Depends(get_user_repo),
     settings: Settings = Depends(get_settings),
+    limiter: RateLimiterProtocol = Depends(get_rate_limiter),
+    x_real_ip: Annotated[str, Header(alias="X-Real-IP")] = "",
 ) -> UserPublic:
+    # Trust ONLY X-Real-IP (our nginx overwrites it with $remote_addr), same
+    # rule as login. 5 registrations / 10 min per IP: the bcrypt cost-12
+    # hash inside auth.register is a CPU-DoS target otherwise.
+    client_key = x_real_ip.strip() or "unknown"
+    try:
+        await auth.throttle(
+            limiter, "register", client_key, limit=5, window=timedelta(minutes=10)
+        )
+    except auth.RateLimited:
+        raise HTTPException(429, "too many attempts, try later") from None
     try:
         user = await auth.register(repo, payload.email, payload.password, payload.channel_name)
     except auth.EmailTaken:

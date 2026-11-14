@@ -89,6 +89,19 @@ class RateLimiter(Protocol):
         """Record an event for `key`; return True if still under `limit`."""
 
 
+async def throttle(
+    limiter: RateLimiter, scope: str, client_key: str, *, limit: int, window: timedelta
+) -> None:
+    """Record an attempt and raise RateLimited once over the limit.
+
+    For endpoints where every attempt is expensive (bcrypt hashing on
+    register): the hit is recorded BEFORE any expensive work, so a flooded
+    client cannot burn CPU.
+    """
+    if not await limiter.hit(f"{scope}:{client_key}", limit=limit, window=window):
+        raise RateLimited()
+
+
 async def register(
     repo: UserRepo, email: str, password: str, channel_name: str
 ) -> User:
