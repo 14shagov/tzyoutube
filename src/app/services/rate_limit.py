@@ -9,12 +9,13 @@ from collections import defaultdict
 from collections.abc import Callable
 from datetime import timedelta
 
+from fastapi import Request
 from redis.asyncio import Redis
 
-from app.core.config import get_settings
+from app.core.config import Settings
 
 # Re-exported for convenience: the protocol lives with the auth service.
-from app.services.auth import RateLimiter as RateLimiterProtocol  # noqa: F401
+from app.services.auth import RateLimiter as RateLimiterProtocol
 
 
 class InMemoryRateLimiter:
@@ -73,8 +74,25 @@ class RedisRateLimiter:
         return count < limit
 
 
-def get_rate_limiter() -> InMemoryRateLimiter | RedisRateLimiter:
-    # Production uses Redis (per ADR-002); dev/tests default to in-memory.
-    if get_settings().is_production:
-        return RedisRateLimiter(Redis.from_url(get_settings().redis_url))
-    return InMemoryRateLimiter()
+def build_rate_limiter(settings: Settings) -> tuple[RateLimiterProtocol, Redis | None]:
+    """Create the process-wide limiter once (review C1).
+
+    Production uses Redis (per ADR-002); dev/tests use one in-memory
+    instance. Returns (limiter, owned redis client or None) — the caller
+    (app lifespan) stores the limiter on app.state and closes the client
+    on shutdown.
+    """
+    if settings.is_production:
+        client = Redis.from_url(settings.redis_url)
+        return RedisRateLimiter(client), client
+    return InMemoryRateLimiter(), None
+
+
+def get_rate_limiter(request: Request) -> RateLimiterProtocol:
+    """FastAPI dependency: the process-wide limiter from app.state (C1).
+
+    Previously this built a NEW limiter (or Redis pool) per request: dev
+    counters reset on every request (the limit never engaged) and prod
+    leaked a connection pool per call.
+    """
+    return request.app.state.rate_limiter

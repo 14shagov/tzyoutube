@@ -20,6 +20,7 @@ from fastapi import (
     Form,
     HTTPException,
     Query,
+    Request,
     Response,
     UploadFile,
 )
@@ -108,10 +109,13 @@ def get_storage() -> Storage:
     return _real()
 
 
-def get_queue():
-    from app.worker.queue import ArqTranscodeQueue
+def get_queue(request: Request):
+    """FastAPI dependency: the process-wide queue from app.state (C1).
 
-    return ArqTranscodeQueue()
+    Previously a new ArqTranscodeQueue (own lazy arq pool) was built per
+    request, leaking a Redis pool per upload.
+    """
+    return request.app.state.queue
 
 
 def get_upload_settings() -> Settings:

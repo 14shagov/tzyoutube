@@ -13,19 +13,34 @@ from app.api.security import CsrfMiddleware
 from app.core.config import get_settings
 from app.core.storage import BUCKETS, get_storage
 from app.models import User
+from app.services.rate_limit import build_rate_limiter
+from app.worker.queue import build_queue
 
 logger = logging.getLogger("tzyoutube.startup")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Bootstrap storage buckets (review m02188: NoSuchBucket on first upload).
+    """Bootstrap storage buckets and the process-wide Redis clients.
 
-    Idempotent: safe on every restart. Runs off the event loop (blocking
+    Buckets (review m02188): idempotent, run off the event loop (blocking
     minio-py client); a storage outage must not kill the app — log and
     continue, uploads will surface the error loudly if it persists.
+
+    Redis clients (review C1): the rate limiter and the transcode queue
+    are created ONCE here and stored on app.state; the get_rate_limiter /
+    get_queue dependencies just read app.state. Created per request they
+    leaked a pool each call (prod) or reset counters every request (dev).
+    Both are closed on shutdown.
     """
     import asyncio
+
+    settings = get_settings()
+    limiter, redis_client = build_rate_limiter(settings)
+    app.state.rate_limiter = limiter
+    app.state.redis_client = redis_client
+    app.state.queue = await build_queue(settings)
+    logger.info("process-wide rate limiter and transcode queue created")
 
     try:
         storage = get_storage()
@@ -33,7 +48,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("storage buckets ensured: %s", sorted(BUCKETS))
     except Exception:
         logger.exception("ensure_buckets failed at startup; uploads may 500 until storage is reachable")
-    yield
+    try:
+        yield
+    finally:
+        queue = getattr(app.state, "queue", None)
+        if queue is not None:
+            await queue.aclose()
+        if redis_client is not None:
+            await redis_client.aclose()
 
 
 def create_app() -> FastAPI:
