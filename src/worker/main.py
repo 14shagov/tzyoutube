@@ -2,7 +2,9 @@
 
 The module path `worker.main.WorkerSettings` is what docker-compose runs.
 The task is a thin adapter: domain logic lives in app.services.transcode
-(ADR-005). Blocking work (minio-py, ffmpeg subprocess) runs in threads.
+(ADR-005). ffmpeg/ffprobe run as async subprocesses that are KILLED on
+timeout (C2 — to_thread cannot kill a child process); blocking DB/S3 work
+runs in threads.
 
 DB access note: the adapter opens a short-lived engine per call on
 purpose — asyncpg connections are loop-bound, and each asyncio.run()
@@ -11,7 +13,6 @@ would raise "attached to a different loop".
 """
 
 import asyncio
-import subprocess
 import uuid
 from typing import ClassVar
 
@@ -21,7 +22,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
 from app.models import Video
-from app.services.transcode import run_transcode
+from app.services.transcode import (
+    FFMPEG_TIMEOUT_SECONDS,
+    PROBE_TIMEOUT_SECONDS,
+    build_probe_args,
+    parse_duration,
+    run_transcode,
+)
 
 
 def _db_call(coro_factory):
@@ -74,30 +81,54 @@ class _TaskStorage:
         self._client.fput_object(bucket, key, path)
 
 
-def _ffmpeg_runner(args: list[str]) -> tuple[bool, str]:
-    proc = subprocess.run(
-        ["ffmpeg", *args], capture_output=True, text=True, timeout=600, check=False
+async def _ffmpeg_runner(args: list[str]) -> tuple[bool, str]:
+    """Run ffmpeg as an async subprocess; KILL it on timeout (C2).
+
+    The old to_thread(subprocess.run, timeout=...) could not kill the
+    child: cancelling the thread left ffmpeg running and the arq
+    job_timeout (300s) fired before the 600s subprocess timeout.
+    """
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg",
+        *args,
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,
     )
-    return proc.returncode == 0, proc.stderr
+    try:
+        _out, err = await asyncio.wait_for(
+            proc.communicate(), timeout=FFMPEG_TIMEOUT_SECONDS
+        )
+    except TimeoutError:
+        proc.kill()
+        await proc.wait()
+        return False, f"ffmpeg killed after {FFMPEG_TIMEOUT_SECONDS}s timeout"
+    return proc.returncode == 0, (err or b"").decode("utf-8", errors="replace")
 
 
-def _duration_probe(path: str) -> float | None:
-    from app.services.transcode import parse_duration
-
-    proc = subprocess.run(
-        ["ffmpeg", "-i", path], capture_output=True, text=True, timeout=60, check=False
+async def _duration_probe(path: str) -> float | None:
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg",
+        *build_probe_args(path),
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,
     )
-    return parse_duration(proc.stderr)
+    try:
+        _out, err = await asyncio.wait_for(proc.communicate(), timeout=PROBE_TIMEOUT_SECONDS)
+    except TimeoutError:
+        proc.kill()
+        await proc.wait()
+        return None
+    return parse_duration((err or b"").decode("utf-8", errors="replace"))
 
 
 async def transcode(ctx: dict, video_id: str) -> None:
     """Enqueued by the web app as transcode(str(video_id)).
 
     Downloads the raw object, runs ffmpeg (480p + thumbnail), uploads the
-    results and flips the video status (processing → ready | failed).
+    results and flips the video status (processing → ready | failed with
+    failure_reason).
     """
-    await asyncio.to_thread(
-        run_transcode,
+    await run_transcode(
         _TaskRepo(),
         _TaskStorage(),
         uuid.UUID(video_id),
@@ -112,5 +143,12 @@ class WorkerSettings:
     functions: ClassVar[list] = [transcode]
     on_startup = None
     on_shutdown = None
+    # C2: arq's default job_timeout (300s) is shorter than one ffmpeg run
+    # (600s) — the job was cancelled before the runner could record the
+    # failure. Headroom lets the runner's own kill fire first.
+    job_timeout = FFMPEG_TIMEOUT_SECONDS + 60
+    # C2: bound concurrency explicitly (default 10 would spawn 10 ffmpeg
+    # processes on one worker container).
+    max_jobs = 2
 
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)

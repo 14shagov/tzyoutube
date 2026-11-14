@@ -1,11 +1,15 @@
-"""Unit tests for the transcode worker logic (ffmpeg calls are faked).
+"""Unit tests for the transcode worker logic (subprocess calls are faked).
 
 The real ffmpeg is never invoked in unit tests: run_transcode takes
-runner/clock callables that tests replace. End-to-end transcode with real
-ffmpeg+Silo runs under the `integration` marker (docs/manual-checks.md).
+async runner/probe callables that tests replace (C2: the real runner is
+asyncio.create_subprocess_exec + kill on timeout). End-to-end transcode
+with real ffmpeg+Silo runs under the `integration` marker
+(docs/manual-checks.md).
 """
 
 import uuid
+from itertools import pairwise
+from types import SimpleNamespace
 
 import pytest
 
@@ -41,24 +45,25 @@ class FakeStorage:
 
 
 class FakeRunner:
-    """Replaces subprocess ffmpeg invocation; creates output files like ffmpeg would."""
+    """Replaces the subprocess ffmpeg invocation; creates output files like ffmpeg would."""
 
-    def __init__(self, ok: bool = True, duration: float = 12.5) -> None:
+    def __init__(self, ok: bool = True, output: str = "err") -> None:
         self.ok = ok
-        self.duration = duration
+        self.output = output
         self.calls: list[list[str]] = []
 
-    def __call__(self, args: list[str]) -> tuple[bool, str]:
+    def _create_outputs(self, args: list[str]) -> None:
+        # Create every output target (args following each "-y").
+        for flag, path in pairwise(args):
+            if flag == "-y":
+                with open(path, "wb") as f:
+                    f.write(b"FAKEOUT")
+
+    async def __call__(self, args: list[str]) -> tuple[bool, str]:
         self.calls.append(args)
         if self.ok:
-            # Create every output target (args following each "-y").
-            from itertools import pairwise
-
-            for flag, path in pairwise(args):
-                if flag == "-y":
-                    with open(path, "wb") as f:
-                        f.write(b"FAKEOUT")
-        return (self.ok, f"Duration: 00:00:{self.duration:05.2f}")
+            self._create_outputs(args)
+        return (self.ok, self.output)
 
 
 class FakeProbe:
@@ -67,7 +72,7 @@ class FakeProbe:
         self.ok = ok
         self.calls: list[str] = []
 
-    def __call__(self, path: str) -> float | None:
+    async def __call__(self, path: str) -> float | None:
         self.calls.append(path)
         return self.duration if self.ok else None
 
@@ -78,8 +83,6 @@ def video_id() -> uuid.UUID:
 
 
 def _setup(repo: FakeRepo, video_id: uuid.UUID) -> None:
-    from types import SimpleNamespace
-
     video = SimpleNamespace(
         id=video_id,
         raw_key=f"raw/{video_id}.mp4",
@@ -87,16 +90,17 @@ def _setup(repo: FakeRepo, video_id: uuid.UUID) -> None:
         video_key=None,
         thumbnail_key=None,
         duration_seconds=0,
+        failure_reason=None,
     )
     repo.videos[video_id] = video
 
 
-def test_run_transcode_success_sets_ready(video_id) -> None:
+async def test_run_transcode_success_sets_ready(video_id) -> None:
     repo, storage = FakeRepo(), FakeStorage()
     _setup(repo, video_id)
     runner = FakeRunner(ok=True)
     probe = FakeProbe(duration=12.5)
-    out = tc.run_transcode(repo, storage, video_id, runner=runner, probe=probe)
+    out = await tc.run_transcode(repo, storage, video_id, runner=runner, probe=probe)
     assert out is not None
     assert repo.status_updates[-1][1] == "ready"
     video = repo.videos[video_id]
@@ -105,18 +109,19 @@ def test_run_transcode_success_sets_ready(video_id) -> None:
     assert video.duration_seconds == 12
 
 
-def test_run_transcode_failure_sets_failed(video_id) -> None:
+async def test_run_transcode_failure_sets_failed_with_reason(video_id) -> None:
     repo, storage = FakeRepo(), FakeStorage()
     _setup(repo, video_id)
-    runner = FakeRunner(ok=False)
-    out = tc.run_transcode(repo, storage, video_id, runner=runner)
+    runner = FakeRunner(ok=False, output="ffmpeg exploded")
+    out = await tc.run_transcode(repo, storage, video_id, runner=runner)
     assert out is None
     assert repo.status_updates[-1][1] == "failed"
+    assert "ffmpeg exploded" in repo.videos[video_id].failure_reason
 
 
-def test_run_transcode_missing_video_noop(video_id) -> None:
+async def test_run_transcode_missing_video_noop(video_id) -> None:
     repo, storage = FakeRepo(), FakeStorage()
-    out = tc.run_transcode(repo, storage, video_id, runner=FakeRunner())
+    out = await tc.run_transcode(repo, storage, video_id, runner=FakeRunner())
     assert out is None
     assert repo.status_updates == []
 

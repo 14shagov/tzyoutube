@@ -54,6 +54,10 @@ def _migration_tables(ddl: str) -> dict[str, set[str]]:
             if col:
                 columns.add(col.group(1))
         tables[name] = columns
+    # Later migrations ALTER TABLE ... ADD COLUMN instead of recreating the
+    # table; those columns must count too.
+    for match in re.finditer(r'ALTER TABLE (\w+) ADD COLUMN "?(\w+)"?', ddl):
+        tables.setdefault(match.group(1).strip('"'), set()).add(match.group(2).strip('"'))
     return tables
 
 

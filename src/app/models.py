@@ -78,6 +78,8 @@ class Video(Base):
     raw_key: Mapped[str] = mapped_column(String(200), nullable=False)
     video_key: Mapped[str | None] = mapped_column(String(200))
     thumbnail_key: Mapped[str | None] = mapped_column(String(200))
+    # C2: why the transcode failed (ffmpeg output tail / timeout / probe).
+    failure_reason: Mapped[str | None] = mapped_column(String(500))
     duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     view_count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
