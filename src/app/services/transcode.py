@@ -1,21 +1,28 @@
-"""Transcode domain: ffmpeg invocation shape, parsing, orchestration.
+"""Transcode domain: ffmpeg invocation shape, ffprobe validation, orchestration.
 
-Pure logic lives here (testable without ffmpeg); the arq task in
+Pure logic lives here (testable without ffmpeg/ffprobe); the arq task in
 worker/main calls run_transcode with real ASYNC callables (C2: the runner
 is asyncio.create_subprocess_exec + kill on timeout, so a hung ffmpeg is
 actually terminated instead of being abandoned by a cancelled thread).
 """
 
 import asyncio
-import re
+import json
 import uuid
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Protocol
 
-# ADR architecture.md: 480p H.264 + AAC, faststart for streaming.
+# C3-hardened invocation: no stdin, only the file protocol (no http/rtsp/…
+# on user-supplied uploads), bounded threads, never upscale below 480p
+# (`min(480,ih)` keeps a 360p source at 360p instead of blurring it to 480p).
+# ADR architecture.md: H.264 + AAC, faststart for streaming.
 FFMPEG_ARGS_TEMPLATE = [
+    "-nostdin",
+    "-protocol_whitelist", "file",
+    "-threads", "4",
     "-i", "{input}",
-    "-vf", "scale=-2:480",
+    "-vf", "scale=-2:'min(480,ih)'",
     "-c:v", "libx264",
     "-preset", "fast",
     "-c:a", "aac",
@@ -23,15 +30,23 @@ FFMPEG_ARGS_TEMPLATE = [
     "-y", "{output}",
 ]
 
-_THUMBNAIL_ARGS = ["-ss", "1", "-i", "{input}", "-frames:v", "1", "-y", "{thumb}"]
+# C3: explicit stream map (first video stream only) + same scale cap.
+_THUMBNAIL_ARGS = [
+    "-nostdin",
+    "-protocol_whitelist", "file",
+    "-ss", "1",
+    "-i", "{input}",
+    "-map", "0:v:0",
+    "-frames:v", "1",
+    "-vf", "scale=-2:'min(480,ih)'",
+    "-y", "{thumb}",
+]
 
 # C2: the worker kills ffmpeg after this long. WorkerSettings.job_timeout
 # is set higher so the runner's own timeout fires first and the failure is
 # recorded with a reason instead of a bare arq cancellation.
 FFMPEG_TIMEOUT_SECONDS = 600
 PROBE_TIMEOUT_SECONDS = 60
-
-_DURATION_RE = re.compile(r"Duration: (\d+):(\d+):(\d+)\.(\d+)")
 
 
 class TranscodeRepo(Protocol):
@@ -49,20 +64,63 @@ class TranscodeStorage(Protocol):
 
 
 AsyncRunner = Callable[[list[str]], Awaitable[tuple[bool, str]]]
-AsyncProbe = Callable[[str], Awaitable[float | None]]
+AsyncProbe = Callable[[str], Awaitable["ProbeInfo"]]
 
 
-def parse_duration(ffmpeg_output: str) -> float | None:
-    """Extract duration in seconds from ffmpeg stderr output."""
-    m = _DURATION_RE.search(ffmpeg_output)
-    if not m:
-        return None
-    h, mi, s, frac = (int(g) for g in m.groups())
-    return h * 3600 + mi * 60 + s + frac / 100
+@dataclass
+class ProbeInfo:
+    """C3: ffprobe verdict on the produced file — not just '32 bytes exist'."""
+
+    ok: bool
+    duration_seconds: float | None = None
+    container: str | None = None
+    video_codec: str | None = None
+    audio_codec: str | None = None
+    reason: str | None = None
+
+
+def parse_ffprobe_json(text: str) -> ProbeInfo:
+    """Parse `ffprobe -print_format json` output into a ProbeInfo verdict.
+
+    ok=True requires a video stream AND a positive duration; anything else
+    is a rejection with a human-readable reason.
+    """
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return ProbeInfo(ok=False, reason="ffprobe output is not valid JSON")
+    if not isinstance(data, dict):
+        return ProbeInfo(ok=False, reason="ffprobe output is not a JSON object")
+
+    streams = data.get("streams") or []
+    video = next((s for s in streams if isinstance(s, dict) and s.get("codec_type") == "video"), None)
+    audio = next((s for s in streams if isinstance(s, dict) and s.get("codec_type") == "audio"), None)
+    fmt = data.get("format") or {}
+    raw_duration = fmt.get("duration") if isinstance(fmt, dict) else None
+    try:
+        duration = float(raw_duration) if raw_duration is not None else None
+    except (TypeError, ValueError):
+        duration = None
+
+    container = fmt.get("format_name") if isinstance(fmt, dict) else None
+    if video is None:
+        return ProbeInfo(ok=False, reason="no video stream in output", container=container)
+    if duration is None or duration <= 0:
+        return ProbeInfo(
+            ok=False, reason="no duration reported by ffprobe", container=container,
+            video_codec=video.get("codec_name"),
+        )
+    return ProbeInfo(
+        ok=True,
+        duration_seconds=duration,
+        container=container,
+        video_codec=video.get("codec_name"),
+        audio_codec=audio.get("codec_name") if audio else None,
+    )
 
 
 def build_ffmpeg_args(input_path: str, output_path: str, thumb_path: str) -> list[str]:
-    """ffmpeg invocation: transcode to 480p MP4 + grab a thumbnail frame."""
+    """ffmpeg invocation: transcode (capped at 480p) + grab a thumbnail frame."""
     def _fill(template: list[str]) -> list[str]:
         return [
             a.format(input=input_path, output=output_path, thumb=thumb_path)
@@ -72,12 +130,16 @@ def build_ffmpeg_args(input_path: str, output_path: str, thumb_path: str) -> lis
     return _fill(FFMPEG_ARGS_TEMPLATE) + _fill(_THUMBNAIL_ARGS)
 
 
-def build_probe_args(path: str) -> list[str]:
-    """Duration probe: `ffmpeg -i` prints container info on stderr.
-
-    C3 replaces this with ffprobe JSON (container/codecs/duration).
-    """
-    return ["-i", path]
+def build_ffprobe_args(path: str) -> list[str]:
+    """ffprobe invocation: JSON container/codec/duration report (C3)."""
+    return [
+        "-v", "error",
+        "-print_format", "json",
+        "-show_format",
+        "-show_streams",
+        "-protocol_whitelist", "file",
+        "-i", path,
+    ]
 
 
 async def run_transcode(
@@ -89,10 +151,12 @@ async def run_transcode(
 ) -> str | None:
     """Async orchestration: raw → videos/<id>.mp4 + thumbnails/<id>.jpg.
 
-    Blocking repo/storage calls run in threads; ffmpeg/probe run via the
+    Blocking repo/storage calls run in threads; ffmpeg/ffprobe run via the
     injected async callables. Returns the output mp4 path on success, None
     on failure. Any stage failure marks the video `failed` WITH
-    failure_reason (C2) — previously a bare "failed" left no diagnostics.
+    failure_reason (C2); the produced file is validated by ffprobe before
+    upload (C3) and its duration comes from ffprobe, not from parsing
+    ffmpeg's stderr.
     """
     import tempfile
     from pathlib import Path
@@ -123,6 +187,16 @@ async def run_transcode(
             await asyncio.to_thread(_fail, ffmpeg_output or "ffmpeg failed")
             return None
 
+        duration: float | None = None
+        if probe is not None:
+            info = await probe(str(out_path))
+            if not info.ok:
+                await asyncio.to_thread(
+                    _fail, f"output rejected by ffprobe: {info.reason or 'unknown'}"
+                )
+                return None
+            duration = info.duration_seconds
+
         await asyncio.to_thread(
             storage.upload_file, "videos", f"videos/{video_id}.mp4", str(out_path)
         )
@@ -131,9 +205,6 @@ async def run_transcode(
                 storage.upload_file, "thumbnails", f"thumbnails/{video_id}.jpg", str(thumb_path)
             )
 
-        duration = None
-        if probe is not None:
-            duration = await probe(str(out_path))
         await asyncio.to_thread(
             repo.set_status,
             video_id,

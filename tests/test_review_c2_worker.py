@@ -172,7 +172,7 @@ class TestRunTranscodeFailureReason:
         repo.videos[vid] = _video(vid)
 
         async def probe(path: str):
-            return 12.5
+            return tc.ProbeInfo(ok=True, duration_seconds=12.5, video_codec="h264")
 
         out = await tc.run_transcode(repo, _Storage(), vid, runner=_AsyncRunner(), probe=probe)
         assert out is not None

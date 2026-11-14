@@ -72,9 +72,12 @@ class FakeProbe:
         self.ok = ok
         self.calls: list[str] = []
 
-    async def __call__(self, path: str) -> float | None:
+    async def __call__(self, path: str) -> tc.ProbeInfo:
         self.calls.append(path)
-        return self.duration if self.ok else None
+        if self.ok:
+            return tc.ProbeInfo(ok=True, duration_seconds=self.duration, container="mov,mp4",
+                                video_codec="h264", audio_codec="aac")
+        return tc.ProbeInfo(ok=False, reason="no video stream in output")
 
 
 @pytest.fixture
@@ -127,16 +130,34 @@ async def test_run_transcode_missing_video_noop(video_id) -> None:
 
 
 def test_ffmpeg_args_shape(video_id) -> None:
-    # The ffmpeg command must scale to 480p, use H.264+AAC, faststart.
+    # The ffmpeg command must use H.264+AAC, faststart, and stay capped at 480p.
     args = tc.build_ffmpeg_args("in.mp4", "out.mp4", "thumb.jpg")
     joined = " ".join(args)
     assert "libx264" in joined
     assert "aac" in joined
     assert "faststart" in joined
-    assert "480" in joined
+    assert "min(480,ih)" in joined
 
 
-def test_parse_duration_from_ffmpeg_output() -> None:
-    line = "  Duration: 00:01:23.45, start: 0.000000, bitrate: 1000 kb/s"
-    assert tc.parse_duration(line) == pytest.approx(83.45, abs=0.01)
-    assert tc.parse_duration("no duration here") is None
+def test_parse_ffprobe_json_valid() -> None:
+    payload = (
+        '{"streams": ['
+        '{"codec_type": "video", "codec_name": "h264"},'
+        '{"codec_type": "audio", "codec_name": "aac"}'
+        '], "format": {"format_name": "mov,mp4,m4a,3gp,3g2,mj2", "duration": "83.45"}}'
+    )
+    info = tc.parse_ffprobe_json(payload)
+    assert info.ok
+    assert info.duration_seconds == pytest.approx(83.45)
+    assert info.video_codec == "h264"
+    assert info.audio_codec == "aac"
+    assert "mp4" in (info.container or "")
+
+
+def test_parse_ffprobe_json_rejects_garbage() -> None:
+    assert tc.parse_ffprobe_json("not json").ok is False
+    assert tc.parse_ffprobe_json('{"streams": [], "format": {"duration": "1.0"}}').ok is False
+    no_dur = '{"streams": [{"codec_type": "video", "codec_name": "h264"}], "format": {}}'
+    info = tc.parse_ffprobe_json(no_dur)
+    assert info.ok is False
+    assert info.reason == "no duration reported by ffprobe"

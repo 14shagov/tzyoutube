@@ -25,8 +25,9 @@ from app.models import Video
 from app.services.transcode import (
     FFMPEG_TIMEOUT_SECONDS,
     PROBE_TIMEOUT_SECONDS,
-    build_probe_args,
-    parse_duration,
+    ProbeInfo,
+    build_ffprobe_args,
+    parse_ffprobe_json,
     run_transcode,
 )
 
@@ -105,20 +106,25 @@ async def _ffmpeg_runner(args: list[str]) -> tuple[bool, str]:
     return proc.returncode == 0, (err or b"").decode("utf-8", errors="replace")
 
 
-async def _duration_probe(path: str) -> float | None:
+async def _ffprobe(path: str) -> ProbeInfo:
+    """Validate the produced file with ffprobe JSON (C3) — container,
+    codecs and duration — instead of trusting ffmpeg's exit code alone."""
     proc = await asyncio.create_subprocess_exec(
-        "ffmpeg",
-        *build_probe_args(path),
-        stdout=asyncio.subprocess.DEVNULL,
+        "ffprobe",
+        *build_ffprobe_args(path),
+        stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
     try:
-        _out, err = await asyncio.wait_for(proc.communicate(), timeout=PROBE_TIMEOUT_SECONDS)
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=PROBE_TIMEOUT_SECONDS)
     except TimeoutError:
         proc.kill()
         await proc.wait()
-        return None
-    return parse_duration((err or b"").decode("utf-8", errors="replace"))
+        return ProbeInfo(ok=False, reason=f"ffprobe killed after {PROBE_TIMEOUT_SECONDS}s timeout")
+    if proc.returncode != 0:
+        tail = (err or b"").decode("utf-8", errors="replace")[-200:]
+        return ProbeInfo(ok=False, reason=f"ffprobe exit {proc.returncode}: {tail}")
+    return parse_ffprobe_json((out or b"").decode("utf-8", errors="replace"))
 
 
 async def transcode(ctx: dict, video_id: str) -> None:
@@ -133,7 +139,7 @@ async def transcode(ctx: dict, video_id: str) -> None:
         _TaskStorage(),
         uuid.UUID(video_id),
         _ffmpeg_runner,
-        _duration_probe,
+        _ffprobe,
     )
 
 
