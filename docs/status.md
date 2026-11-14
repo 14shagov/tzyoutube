@@ -1,6 +1,6 @@
 # Статус проекта
 
-Обновлено: 2026-11-14 (ревью, группы A, B, C и D закрыты; юнит-прогон 263 passed).
+Обновлено: 2026-11-14 (ревью, группы A, B, C и D закрыты; баг presign реального стека закрыт; юнит-прогон 273 passed).
 
 ## Ускорение юнит-прогона (задания владельца, по одному коммиту)
 
@@ -316,3 +316,30 @@
   21 коммит, 263 passed, ruff чист. Ручные проверки (manual-checks.md)
   — на владельце; интеграционные тесты (`pytest -m integration`) —
   только после подтверждения владельца.
+
+## Баг реального стека: presign делал сетевой вызов (закрыт 2026-11-14)
+
+- Симптом: загрузка/транскод ок, но `GET /api/videos/{id}` → 500,
+  `MaxRetryError ... url: /videos?location= (Connection refused)` —
+  web-контейнер не достаёт публичный хост localhost:80.
+- Причина: presign-клиент создавался без `region`, поэтому minio-py на
+  каждый `presigned_get_object` запрашивал регион бакета по сети
+  (`_get_region` → GetBucketLocation). Подпись должна считаться локально.
+- Фикс `834a9af`: `S3_REGION` (default `us-east-1`) в `Settings`,
+  `region=settings.s3_region` в ОБОИХ Minio-клиентах (внутренний и
+  presign); в compose: `MINIO_REGION: ${S3_REGION:-us-east-1}` у silo и
+  `S3_REGION` у web/worker/seed; `.env.example` документирует.
+- Аудит presigned-вызовов: единственная точка — `Storage.presigned_get`
+  (storage.py), вызывается только из `access.video_play_url` и
+  `access.authorize_play_url` (bucket `videos`); превью публичных видео —
+  через nginx `/media/{key}` (public-read бакет, без подписи), приватные
+  превью — stage 3. Все пути покрыты стражами.
+- Тесты `tests/test_presign_offline.py` (10): реальные Minio-клиенты без
+  autospec + запрет сети на уровне `urllib3.PoolManager.urlopen` —
+  presigned_get офлайн, host = публичный endpoint; страж region в
+  конструкторе; офлайн-проверки всех presign-путей (video_play_url /
+  authorize_play_url / view_or_none); feed+search+карточка с реальным
+  presign-клиентом и заглушкой только сети. Были красными (7 failed),
+  стали зелёными после фикса.
+- Прогон: 273 passed, ruff чист. Ручная проверка — manual-checks.md п.7
+  (приписка про логи) и новый п.15.

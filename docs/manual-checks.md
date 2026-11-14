@@ -65,10 +65,15 @@ docker compose down -v        # чистый старт (удалит данны
   curl -i -b cookies.txt http://localhost/api/videos/<id>
   # из ответа взять play_url, затем:
   curl -I "<play_url>"
+  # регресс presign-offline (баг реального стека): карточка должна отдаваться
+  # БЕЗ 500 и без обращений web-контейнера к публичному хосту —
+  docker compose logs web --tail 30 | Select-String -Pattern "location|MaxRetry|Connection refused"
   ```
-- Ожидание: карточка содержит play_url (presigned, host localhost);
+- Ожидание: карточка 200, содержит play_url (presigned, host = S3_PUBLIC_ENDPOINT,
+  напр. `http://localhost/videos/<uuid>.mp4?X-Amz-...`); в логах web НЕТ
+  MaxRetryError/`?location=` (presign теперь локальный, region задан явно);
   HEAD по play_url → HTTP 200 или 206 от хранилища; без cookie/прав — 404.
-- Прислать: JSON карточки и статус HEAD.
+- Прислать: JSON карточки, статус HEAD, и факт отсутствия ошибок в логах web.
 
 ## 8. Лента, поиск, просмотры, реакции, комментарии
 
@@ -162,3 +167,18 @@ docker compose down -v        # чистый старт (удалит данны
   `play_url` вида `http://localhost/videos/<uuid>.mp4?...`; ссылка
   открывается в браузере и видео воспроизводится (или скачивается).
 - Прислать: ответы обоих SELECT, `play_url`, статус открытия ссылки.
+
+## 15. Presign офлайн, region явный (регресс реального стека: GET /api/videos/{id} → 500 MaxRetryError ?location=)
+
+- Команды:
+  ```
+  docker compose exec web sh -c 'env | Select-String -Pattern "S3_REGION"'   # PowerShell: docker compose exec web env | findstr S3_REGION
+  curl.exe -i http://localhost/api/feed
+  curl.exe -i "http://localhost/api/search?q=Manual"
+  curl.exe -i http://localhost/api/videos/<id>     # ready-видео из п.14
+  docker compose logs web --tail 40
+  ```
+- Ожидание: в env web есть `S3_REGION=us-east-1` (и у silo `MINIO_REGION` тем же);
+  feed/search/карточка → 200; у карточки `play_url` с host публичного endpoint
+  и `X-Amz-Signature`; в логах web нет `MaxRetryError`/`?location=`/`Connection refused`.
+- Прислать: вывод env, статусы трёх GET, `play_url`, хвост логов web.
