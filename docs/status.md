@@ -1,6 +1,6 @@
 # Статус проекта
 
-Обновлено: 2026-11-14 (ревью, группы A и B закрыты; юнит-прогон 223 passed).
+Обновлено: 2026-11-14 (ревью, группы A, B и C закрыты; юнит-прогон 262 passed).
 
 ## Ускорение юнит-прогона (задания владельца, по одному коммиту)
 
@@ -215,3 +215,62 @@
 ### Дальше
 
 - Группа C (C1-C5) — только по команде владельца после паузы.
+
+## Ревью (независимый список замечаний), группа C — сделано 2026-11-14
+
+По одному коммиту, каждый с красным тестом перед фиксом; после группы
+`uv run pytest -q` = 262 passed, `uv run ruff check .` чист.
+
+- C1 `6999427`: `get_rate_limiter()` и `get_queue()` создавали НОВЫЙ
+  limiter/Redis-пул на каждый запрос (dev: состояние in-memory лимитера
+  терялось между запросами; prod: пул на запрос — утечка соединений).
+  Теперь оба создаются один раз в lifespan (`build_rate_limiter` /
+  `build_queue` → `app.state.rate_limiter`, `app.state.redis_client`,
+  `app.state.queue`) и закрываются на shutdown (`aclose()`); провайдеры
+  читают из `request.app.state`.
+- C2 `a91b975`: arq `job_timeout` по умолчанию 300s < ffmpeg timeout 600s
+  → джоба умирала отменой до того, как runner мог записать причину;
+  `subprocess.run(timeout=...)` в to_thread НЕ убивает процесс ffmpeg.
+  Теперь `WorkerSettings.job_timeout = 660`, `max_jobs = 2`; runner —
+  `asyncio.create_subprocess_exec` + `wait_for` + `proc.kill()` на таймауте;
+  любой фейл этапа (download/ffmpeg/probe) → статус `failed` С
+  `failure_reason` (новая колонка `videos.failure_reason`, миграция
+  `c8d9e0f1a2b3`; страж models↔migrations дополнен парсингом
+  `ALTER TABLE … ADD COLUMN`).
+- C3 `6a7343e`: ffmpeg-args захардены: `-nostdin`, `-protocol_whitelist
+  file` (никаких внешних протоколов на пользовательских загрузках),
+  `-threads 4`, `scale=-2:'min(480,ih)'` (источник ниже 480p НЕ
+  апскейлится), thumbnail с явным `-map 0:v:0`. Валидация результата —
+  через `ffprobe -print_format json` (контейнер/кодеки/duration), а не
+  «файл существует»; duration берётся из ffprobe. Выход без видеострима
+  или duration → `failed` с причиной, аплоад не выполняется.
+- C4 `240a607`: контейнер работал от root. Теперь системный
+  пользователь `app` (groupadd/useradd --system), `chown -R app:app
+  /srv/app` после `uv sync`, `COPY --chown=app:app` для кода, `USER app`
+  после всех COPY. Страж `test_dockerfile_runs_as_non_root`.
+- C5 `4fc9edc`: nginx — `add_header` (nosniff / X-Frame-Options DENY /
+  Referrer-Policy) на все ответы; `limit_req_zone auth_per_ip` +
+  `limit_req` на `location /auth/`; `client_max_body_size 512m` ТОЛЬКО на
+  `location = /api/videos` (общий лимит снижен до 10m) с
+  `proxy_request_buffering off`; app-side pre-check Content-Length на
+  upload → 413 до чтения тела, 400 на «мусорном» заголовке. Стражи:
+  tests/test_nginx_config.py (парсинг конфига), tests/test_review_c5_upload.py.
+
+### Ручные проверки после группы C (владелец, Docker) — manual-checks.md
+
+- п.14: upload > 512m → 413 (и на nginx, и на app-pre-check); обычный
+  upload → 202 → ready, в `videos.failure_reason` NULL.
+- п.14 (регрессия C2/C3): upload «битого» файла → статус `failed`,
+  `failure_reason` заполнен (а не пустой/processing навсегда).
+- п.5: 20+ быстрых запросов на /auth/login с одного IP → 429 от nginx
+  (limit_req), приложение при этом считает только неудачные (B3).
+- Response headers: `curl -I` любого URL → X-Content-Type-Options,
+  X-Frame-Options, Referrer-Policy присутствуют.
+- `docker compose run --rm --user root web id` — для сравнения; обычный
+  контейнер: `docker compose exec web id` → uid != 0 (user app).
+- Поиск по título с `%`/`_` (B6) и лимиты пагинации (B1) — без регрессий.
+
+### Дальше
+
+- Группа D (D1-D3) — выполняется в той же сессии по команде владельца
+  «Начинай выполнять группу C и D» (m00968).
