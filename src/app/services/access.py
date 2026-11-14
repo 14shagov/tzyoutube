@@ -16,7 +16,20 @@ class AclRepo(Protocol):
 
 
 class DeliveryStorage(Protocol):
-    def presigned_get(self, bucket: str, key: str, ttl_seconds: int | None = None) -> str: ...
+    def presigned_get(
+        self, bucket: str, key: str, ttl_seconds: int | None = None,
+        response_headers: dict[str, str] | None = None,
+    ) -> str: ...
+
+
+# Task 3: objects written before the content_type fix keep
+# application/octet-stream in S3; the presigned URL overrides the response
+# headers so the browser PLAYS the video (inline + video/mp4) instead of
+# downloading it — this also covers already-uploaded objects.
+PLAY_RESPONSE_HEADERS = {
+    "response-content-type": "video/mp4",
+    "response-content-disposition": "inline",
+}
 
 
 def can_view(video, user) -> bool:
@@ -60,7 +73,9 @@ def video_play_url(storage: DeliveryStorage, video, ttl_seconds: int | None = No
         return None
     if getattr(video, "is_private", False):
         return None
-    return storage.presigned_get("videos", key, ttl_seconds=ttl_seconds)
+    return storage.presigned_get(
+        "videos", key, ttl_seconds=ttl_seconds, response_headers=PLAY_RESPONSE_HEADERS
+    )
 
 
 def authorize_play_url(storage: DeliveryStorage, video, ttl_seconds: int | None = None) -> str | None:
@@ -70,7 +85,9 @@ def authorize_play_url(storage: DeliveryStorage, video, ttl_seconds: int | None 
     key = getattr(video, "video_key", None)
     if not key:
         return None
-    return storage.presigned_get("videos", key, ttl_seconds=ttl_seconds)
+    return storage.presigned_get(
+        "videos", key, ttl_seconds=ttl_seconds, response_headers=PLAY_RESPONSE_HEADERS
+    )
 
 
 async def view_or_none(storage: DeliveryStorage, video, user, acl: AclRepo,

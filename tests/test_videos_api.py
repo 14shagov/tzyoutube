@@ -49,7 +49,8 @@ class FakeStorage:
 
         return _Obj()
 
-    def presigned_get(self, bucket: str, key: str, ttl_seconds=None) -> str:
+    def presigned_get(self, bucket: str, key: str, ttl_seconds=None,
+                      response_headers=None) -> str:
         return f"http://example.com/{bucket}/{key}"
 
     def delete(self, bucket: str, key: str) -> None:

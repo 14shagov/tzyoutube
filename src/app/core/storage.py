@@ -59,7 +59,10 @@ class S3ClientProtocol(Protocol):
 
     def fget_object(self, bucket_name: str, object_name: str, file_path: str, **kwargs: Any) -> Any: ...
 
-    def presigned_get_object(self, bucket_name: str, object_name: str, expires: dt.timedelta) -> str: ...
+    def presigned_get_object(
+        self, bucket_name: str, object_name: str, expires: dt.timedelta,
+        response_headers: dict[str, str] | None = None,
+    ) -> str: ...
 
     def remove_object(self, bucket_name: str, object_name: str) -> None: ...
 
@@ -126,9 +129,12 @@ class Storage:
 
     # -- reads ------------------------------------------------------------
 
-    def presigned_get(self, bucket: str, key: str, ttl_seconds: int | None = None) -> str:
+    def presigned_get(
+        self, bucket: str, key: str, ttl_seconds: int | None = None,
+        response_headers: dict[str, str] | None = None,
+    ) -> str:
         ttl = dt.timedelta(seconds=ttl_seconds if ttl_seconds is not None else self.presigned_ttl)
-        return self._presign.presigned_get_object(bucket, key, ttl)
+        return self._presign.presigned_get_object(bucket, key, ttl, response_headers=response_headers)
 
     def download_to(self, bucket: str, key: str, dest_path: str) -> None:
         self._s3.fget_object(bucket, key, dest_path)

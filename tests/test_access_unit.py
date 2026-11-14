@@ -88,7 +88,7 @@ async def test_acl_without_entry_denies() -> None:
 
 def test_presigned_url_generated_only_for_allowed() -> None:
     class FakeStorage:
-        def presigned_get(self, bucket, key, ttl_seconds=None):
+        def presigned_get(self, bucket, key, ttl_seconds=None, response_headers=None):
             return f"http://example.com/{bucket}/{key}?ttl={ttl_seconds}"
 
     storage = FakeStorage()
@@ -105,7 +105,7 @@ def test_presigned_url_generated_only_for_allowed() -> None:
 
 def test_not_ready_video_has_no_play_url() -> None:
     class FakeStorage:
-        def presigned_get(self, bucket, key, ttl_seconds=None):
+        def presigned_get(self, bucket, key, ttl_seconds=None, response_headers=None):
             return "http://example.com/never"
 
     video = _video(is_private=False, status="processing")
@@ -116,7 +116,7 @@ def test_not_ready_video_has_no_play_url() -> None:
 @pytest.mark.asyncio
 async def test_view_or_none_combines_access_and_presign() -> None:
     class FakeStorage:
-        def presigned_get(self, bucket, key, ttl_seconds=None):
+        def presigned_get(self, bucket, key, ttl_seconds=None, response_headers=None):
             return f"http://example.com/{bucket}/{key}"
 
     acl = FakeAclRepo(set())
