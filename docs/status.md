@@ -1,6 +1,6 @@
 # Статус проекта
 
-Обновлено: 2026-11-14 (ревью, группы A, B и C закрыты; юнит-прогон 262 passed).
+Обновлено: 2026-11-14 (ревью, группы A, B, C и D закрыты; юнит-прогон 263 passed).
 
 ## Ускорение юнит-прогона (задания владельца, по одному коммиту)
 
@@ -272,5 +272,47 @@
 
 ### Дальше
 
-- Группа D (D1-D3) — выполняется в той же сессии по команде владельца
+- Группа D (D1-D3) — выполнена в той же сессии по команде владельца
   «Начинай выполнять группу C и D» (m00968).
+
+## Ревью (независимый список замечаний), группа D — сделано 2026-11-14
+
+После группы `uv run pytest -q` = 263 passed, `uv run ruff check .` чист.
+
+- D1 `73f0c1f`: pg_trgm входит в official-образ `postgres:16-alpine`
+  (проверено по docker-library/postgres, Dockerfile-alpine.template;
+  docker-compose pins `postgres:16-alpine`) — отдельный пакет не нужен.
+  Миграция `d9e0f1a2b3c4`: `CREATE EXTENSION IF NOT EXISTS pg_trgm` +
+  GIN-индекс `ix_videos_title_trgm` (`gin_trgm_ops`) по `videos.title`;
+  downgrade удаляет индекс и extension. Страж offline-DDL
+  (`test_migrations_offline.py::test_offline_ddl_enables_pg_trgm_and_gin_title_index`).
+- D2 — проверено, код не потребовался: `tests/conftest.py` уже имеет
+  autouse `_storage_stub` (create_autospec(Minio), bucket_exists=True,
+  патчит только app.main.get_storage) и `_fast_bcrypt` (cost 4 только в
+  тестах); стражи — `test_isolated_environment.py` (патчи реально
+  включены) и `test_production_bcrypt_cost.py` (AST: `_BCRYPT_ROUNDS == 12`
+  и hash_password использует константу). Реальный ensure_buckets —
+  отдельно в `test_startup_buckets.py` (_BucketProbe патчит оба модуля).
+  COPY/ADD-страж пропускается без .git (`test_docker_artifacts.py`).
+- D3 `docs`: `docs/security.md` — 2.1 (лимитер: только неудачные логины,
+  peek до хеширования, регистрация 5/10мин до bcrypt, dummy-verify,
+  идемпотентный logout + purge при входе), 2.3 (512m только на upload,
+  pre-check Content-Length, ffmpeg-харден, job_timeout/max_jobs/kill,
+  failure_reason), новая 2.3a (границы пагинации, title≤200, guest_id,
+  ILIKE-escaping, pg_trgm GIN), новая 2.10 (security-заголовки, X-Real-IP,
+  limit_req, non-root). `docs/requirements.md` — допущения 11-14
+  (pg_trgm в alpine-образе, таймауты воркера и failure_reason,
+  синглтоны lifespan, формат guest_id).
+
+### Ручные проверки после группы D (владелец, Docker) — manual-checks.md
+
+- После `docker compose exec db psql -c 'CREATE EXTENSION IF NOT EXISTS pg_trgm'` не требуется — миграция ставит сама; проверить: `\dx pg_trgm` и `\d videos` (индекс ix_videos_title_trgm, GIN).
+- Поиск по части названия (ILIKE) использует индекс — проверить через `EXPLAIN` (не обязательно, pg_trgm GIN сработает на `title ILIKE '%…%'`).
+- Регресс: группы A-C ручные проверки из секций выше без изменений.
+
+### Дальше
+
+- Все четыре группы ревью (A1-A6, B1-B7, C1-C5, D1-D3) закрыты:
+  21 коммит, 263 passed, ruff чист. Ручные проверки (manual-checks.md)
+  — на владельце; интеграционные тесты (`pytest -m integration`) —
+  только после подтверждения владельца.
