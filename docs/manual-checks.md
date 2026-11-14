@@ -182,3 +182,20 @@ docker compose down -v        # чистый старт (удалит данны
   feed/search/карточка → 200; у карточки `play_url` с host публичного endpoint
   и `X-Amz-Signature`; в логах web нет `MaxRetryError`/`?location=`/`Connection refused`.
 - Прислать: вывод env, статусы трёх GET, `play_url`, хвост логов web.
+
+## 16. Playback в браузере: видео проигрывается, а не скачивается (регресс content-type)
+
+- Предусловие: видео из п.14 в статусе ready.
+- Команды (PowerShell, range-запрос как у браузерного <video>):
+  ```
+  curl.exe -s -D - -o NUL -r 0-0 "<play_url>"
+  ```
+- Ожидание: `HTTP/1.1 206 Partial Content`, `Content-Type: video/mp4`,
+  `Content-Disposition: inline`, `Accept-Ranges: bytes`, ровно один
+  `X-Content-Type-Options: nosniff` (не дублируется от silo + nginx).
+  Presigned URL содержит `response-content-type=video%2Fmp4` и
+  `response-content-disposition=inline` (покрывает и старые объекты).
+- Также: открыть `play_url` в браузере — должен играть inline, не скачиваться;
+  превью público: `curl.exe -s -D - -o NUL http://localhost/media/thumbnails/<uuid>.jpg`
+  → `Content-Type: image/jpeg`, `Cache-Control: public, max-age=3600`, один nosniff.
+- Прислать: заголовки 206-ответа, заголовки превью, скрин/описание поведения браузера.

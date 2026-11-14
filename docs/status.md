@@ -1,6 +1,6 @@
 # Статус проекта
 
-Обновлено: 2026-11-14 (ревью, группы A, B, C и D закрыты; баг presign реального стека закрыт; юнит-прогон 273 passed).
+Обновлено: 2026-11-14 (ревью, группы A, B, C и D закрыты; баги реального стека presign и content-type закрыты; юнит-прогон 299 passed).
 
 ## Ускорение юнит-прогона (задания владельца, по одному коммиту)
 
@@ -343,3 +343,44 @@
   стали зелёными после фикса.
 - Прогон: 273 passed, ruff чист. Ручная проверка — manual-checks.md п.7
   (приписка про логи) и новый п.15.
+
+## Баг реального стека: play_url скачивал видео вместо inline-проигрывания (закрыт 2026-11-14)
+
+- Симптом: presigned play_url открывался в браузере как download; подпись
+  валидна, 200/206. Причина: объекты клались с Content-Type по умолчанию
+  `application/octet-stream` (content_type не передавался при записи).
+- Задачи владельца (8 пунктов), по одному коммиту, red-тест отдельным
+  коммитом перед каждым фиксом:
+  1. `2797a43` red: tests/test_content_type_on_write.py — все записи в
+     хранилище обязаны нести content_type (autospec Minio, 6 тестов).
+  2. `f138fc4`: content_type на каждой записи — CONTENT_TYPE_BY_EXT в
+     services/videos.py (mp4/mov/webm/mkv/avi), "video/mp4" для результата
+     транскода и "image/jpeg" для превью в transcode.py, прокинуто через
+     Storage.put/put_stream/put_file → put_object/fput_object и
+     _TaskStorage.upload_file. Cache-Control: только публичные превью
+     `public, max-age=3600` в nginx; приватные видео — без публичного кеша.
+  3. `d76c1b3` red + `086eb9b` fix (+`8032df2`): presigned play-URL несёт
+     response_headers `response-content-type=video/mp4` +
+     `response-content-disposition=inline` (покрывает и legacy-объекты) —
+     PLAY_RESPONSE_HEADERS в access.py, response_headers в
+     Storage.presigned_get → presigned_get_object. Тесты офлайн (сеть
+     запрещена), X-Amz-… + response-* параметры в URL.
+  4. manual-checks.md п.16: `curl.exe -s -D - -o NUL -r 0-0 "<play_url>"` →
+     206 + Content-Type video/mp4 + Content-Disposition inline +
+     Accept-Ranges: bytes + ровно один nosniff; превью /media/… → image/jpeg
+     + Cache-Control 1h.
+  5+8. `90c0bab` red + `a6f8035` fix: nginx — /videos/ стримит
+     (proxy_buffering off, proxy_max_temp_file_size 0,
+     proxy_request_buffering off), Range → в хранилище
+     (proxy_set_header Range $http_range), Accept-Ranges → клиенту
+     (proxy_pass_header); Content-Type/Content-Disposition не трогаем;
+     во всех silo-локациях proxy_hide_header X-Content-Type-Options, а
+     server-level add_header даёт ровно один nosniff;
+     /media/thumbnails/ заново объявляет 3 security-заголовка (свой
+     add_header отменяет наследование) + Cache-Control public 1h.
+  7. `fdfdc1d` red + `6c055aa` fix (+`9703350`): TTL в настройках —
+     PRESIGNED_TTL_SECONDS=3600 (публичные), PRESIGNED_TTL_PRIVATE_SECONDS=900
+     (приватные, private=True в authorize_play_url); задокументировано в
+     .env.example, security.md 2.6, ADR-003, architecture.md.
+- Прогон: 299 passed, ruff чист. Ручная проверка — manual-checks.md п.16.
+- Дальше: ждём команду владельца.
