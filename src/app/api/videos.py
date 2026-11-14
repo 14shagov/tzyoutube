@@ -373,6 +373,7 @@ async def list_comments(
 
 @router.post("", response_model=VideoOut, status_code=http_status.HTTP_202_ACCEPTED)
 async def upload_video(
+    request: Request,
     file: UploadFile = File(...),
     # Video.title is String(200): bound at validation so an over-length
     # title is a 422, not a DB error (500).
@@ -387,9 +388,22 @@ async def upload_video(
     if not title.strip():
         raise HTTPException(422, "title is required")
 
+    max_size = settings.max_upload_size
+
+    # C5: Content-Length pre-check — reject an obviously oversized upload
+    # with 413 before reading a single byte of the body (nginx allows 512m
+    # only on this location, but the app must not rely on the proxy).
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            declared = int(content_length)
+        except ValueError:
+            raise HTTPException(400, "invalid Content-Length") from None
+        if declared > max_size:
+            raise HTTPException(413, "size over limit") from None
+
     # Stream the upload to a temp file, enforcing the size limit while
     # reading — the file never sits whole in memory (m02086 task 2).
-    max_size = settings.max_upload_size
     chunk_limit = 1024 * 1024  # 1 MiB chunks
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
         tmp_path = tmp.name
