@@ -13,6 +13,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Comment, Reaction, Video, VideoAcl, VideoView
 
 
+def escape_ilike(value: str, escape: str = "\\") -> str:
+    """Escape LIKE wildcards (and the escape char itself) in a user query.
+
+    Backslash first, then % and _, so a crafted input like "\\%" cannot
+    smuggle an unescaped wildcard through.
+    """
+    return (
+        value.replace(escape, escape + escape)
+        .replace("%", escape + "%")
+        .replace("_", escape + "_")
+    )
+
+
 class SqlFeedRepo:
     """Public feed and title search (FR-1, FR-7)."""
 
@@ -36,7 +49,9 @@ class SqlFeedRepo:
             .where(
                 Video.status == "ready",
                 Video.is_private.is_(False),
-                Video.title.ilike(f"%{query}%"),
+                # User input goes through escape_ilike: a raw % or _ in the
+                # query would match every row (B6).
+                Video.title.ilike(f"%{escape_ilike(query)}%", escape="\\"),
             )
             .order_by(Video.created_at.desc())
             .limit(limit)
