@@ -16,7 +16,9 @@ from app.core.storage import BUCKETS, Storage, StorageObject
 def _client() -> tuple[Minio, Storage]:
     client = create_autospec(Minio, instance=True)
     client.presigned_get_object.side_effect = (
-        lambda bucket, key, expires: f"http://example.com/{bucket}/{key}?ttl={int(expires.total_seconds())}"
+        lambda bucket, key, expires, response_headers=None: (
+            f"http://example.com/{bucket}/{key}?ttl={int(expires.total_seconds())}"
+        )
     )
     return client, Storage(client, presigned_ttl=7200)
 
@@ -42,7 +44,8 @@ def test_storage_presigned_get_uses_ttl() -> None:
     url = storage.presigned_get(BUCKETS["videos"], "x.mp4")
     assert "ttl=7200" in url
     client.presigned_get_object.assert_called_once_with(
-        BUCKETS["videos"], "x.mp4", __import__("datetime").timedelta(seconds=7200)
+        BUCKETS["videos"], "x.mp4", __import__("datetime").timedelta(seconds=7200),
+        response_headers=None,
     )
 
 
