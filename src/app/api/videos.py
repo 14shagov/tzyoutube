@@ -8,8 +8,19 @@ import asyncio
 import tempfile
 import uuid
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Depends, File, Form, HTTPException, Response, UploadFile
+from fastapi import (
+    APIRouter,
+    Cookie,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+)
 from fastapi import status as http_status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -194,8 +205,8 @@ feed_router = APIRouter(prefix="/api", tags=["feed"])
 
 @feed_router.get("/feed", response_model=FeedOut)
 async def feed(
-    limit: int = 20,
-    offset: int = 0,
+    limit: Annotated[int, Query(ge=0, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
     feed_repo=Depends(get_feed_repo),
 ) -> FeedOut:
     videos = await feed_repo.public_feed(limit=limit, offset=offset)
@@ -211,8 +222,8 @@ async def feed(
 @feed_router.get("/search", response_model=FeedOut)
 async def search(
     q: str = "",
-    limit: int = 20,
-    offset: int = 0,
+    limit: Annotated[int, Query(ge=0, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
     feed_repo=Depends(get_feed_repo),
 ) -> FeedOut:
     if not q.strip():
@@ -331,8 +342,8 @@ async def add_comment(
 @router.get("/{video_id}/comments", response_model=CommentList)
 async def list_comments(
     video_id: uuid.UUID,
-    limit: int = 50,
-    offset: int = 0,
+    limit: Annotated[int, Query(ge=0, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
     repo=Depends(get_video_repo),
     comment_repo=Depends(get_comment_repo),
     acl=Depends(get_acl),
