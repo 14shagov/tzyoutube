@@ -18,7 +18,7 @@ class AclRepo(Protocol):
 class DeliveryStorage(Protocol):
     def presigned_get(
         self, bucket: str, key: str, ttl_seconds: int | None = None,
-        response_headers: dict[str, str] | None = None,
+        response_headers: dict[str, str] | None = None, *, private: bool = False,
     ) -> str: ...
 
 
@@ -74,7 +74,8 @@ def video_play_url(storage: DeliveryStorage, video, ttl_seconds: int | None = No
     if getattr(video, "is_private", False):
         return None
     return storage.presigned_get(
-        "videos", key, ttl_seconds=ttl_seconds, response_headers=PLAY_RESPONSE_HEADERS
+        "videos", key, ttl_seconds=ttl_seconds, response_headers=PLAY_RESPONSE_HEADERS,
+        private=False,
     )
 
 
@@ -85,8 +86,10 @@ def authorize_play_url(storage: DeliveryStorage, video, ttl_seconds: int | None 
     key = getattr(video, "video_key", None)
     if not key:
         return None
+    # Task 7: private videos get the SHORT ttl (900s default), public 3600s.
     return storage.presigned_get(
-        "videos", key, ttl_seconds=ttl_seconds, response_headers=PLAY_RESPONSE_HEADERS
+        "videos", key, ttl_seconds=ttl_seconds, response_headers=PLAY_RESPONSE_HEADERS,
+        private=bool(getattr(video, "is_private", False)),
     )
 
 

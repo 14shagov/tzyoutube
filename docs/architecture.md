@@ -61,7 +61,7 @@ flowchart LR
 
 ### 2.3 Раздача
 
-- **Готовое видео**: API после проверки прав выдаёт браузеру presigned GET URL на `videos/<uuid>.mp4` (TTL 4 ч, настраивается `PRESIGNED_TTL_SECONDS`). Тег `<video src=...>` играет его; перемотка работает через Range-запросы, которые S3-хранилище поддерживает (206 Partial Content).
+- **Готовое видео**: API после проверки прав выдаёт браузеру presigned GET URL на `videos/<uuid>.mp4` (TTL 3600 с публичные / 900 с приватные, `PRESIGNED_TTL_SECONDS` / `PRESIGNED_TTL_PRIVATE_SECONDS`). Тег `<video src=...>` играет его; перемотка работает через Range-запросы, которые S3-хранилище поддерживает (206 Partial Content).
 - **Как формируется host presigned URL (за reverse proxy)**: сигнатура SigV4 покрывает host и путь, поэтому подписывать надо тем host, которым пользуется браузер. Приложение держит два клиента S3: **внутренний** (`S3_ENDPOINT=silo:9000`) — для PUT/DELETE из web и воркера; **внешний** (`S3_PUBLIC_ENDPOINT=<публичный host>:80`, `S3_PUBLIC_SECURE=false`) — только для генерации presigned URL. NGINX проксирует `location /videos/` и `location /thumbnails/` на `silo:9000` **без rewrite** (URI передаётся как есть) и с `proxy_set_header Host $host` — тогда хранилище валидирует подпись, вычисленную для публичного host. Для `demo/` и локальной разработки `S3_PUBLIC_ENDPOINT=localhost`.
 - **Превью публичных видео**: отдаются через NGINX `/media/thumbnails/...` → хранилище без подписи (публичный bucket policy на чтение). Карточкам ленты подпись не нужна.
 - **Превью приватных видео**: как и видео — presigned URL после проверки прав.

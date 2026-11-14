@@ -78,7 +78,7 @@ class FakeCommentRepo:
 
 
 class FakeStorage:
-    def presigned_get(self, bucket, key, ttl_seconds=None, response_headers=None):
+    def presigned_get(self, bucket, key, ttl_seconds=None, response_headers=None, private=False):
         return f"http://example.com/{bucket}/{key}"
 
 

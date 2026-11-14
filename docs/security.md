@@ -79,7 +79,8 @@
 
 ### 2.6 Раздача медиа (T4)
 
-- Presigned GET URL с TTL 4 часа; выдача только после `check_video_access`.
+- Presigned GET URL: TTL 3600 с для публичных видео (`PRESIGNED_TTL_SECONDS`) и только 900 с для приватных (`PRESIGNED_TTL_PRIVATE_SECONDS`) — утёкшая ссылка не должна жить часами; выдача только после `check_video_access`.
+- В presigned URL на воспроизведение принудительно задаются `response-content-type=video/mp4` и `response-content-disposition=inline`, чтобы браузер проигрывал видео, а не скачивал (актуально и для объектов, загруженных до появления явного content_type при записи).
 - Бакет `raw` закрыт полностью; публичная политика только на `thumbnails`.
 - NGINX проксирует `/media/` → хранилище; прямые порты хранилища наружу не публикуются.
 

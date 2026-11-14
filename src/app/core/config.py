@@ -32,7 +32,10 @@ class Settings(BaseSettings):
     # presigned_* call — unreachable from the web container via the public
     # host. Must match the server's MINIO_REGION (docker-compose).
     s3_region: str = "us-east-1"
-    presigned_ttl_seconds: int = 4 * 3600
+    # Task 7: presigned GET TTL. Public videos get 1h; PRIVATE videos only
+    # 15 min — a leaked link must not live for 4 hours.
+    presigned_ttl_seconds: int = 3600
+    presigned_ttl_private_seconds: int = 900
 
     # Uploads
     max_upload_size: int = 512 * 1024 * 1024

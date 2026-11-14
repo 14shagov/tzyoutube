@@ -82,11 +82,13 @@ class Storage:
         self,
         s3: S3ClientProtocol,
         presign_client: S3ClientProtocol | None = None,
-        presigned_ttl: int = 4 * 3600,
+        presigned_ttl: int = 3600,
+        presigned_ttl_private: int = 900,
     ) -> None:
         self._s3 = s3
         self._presign = presign_client or s3
         self.presigned_ttl = presigned_ttl
+        self.presigned_ttl_private = presigned_ttl_private
 
     # -- writes -----------------------------------------------------------
 
@@ -131,10 +133,15 @@ class Storage:
 
     def presigned_get(
         self, bucket: str, key: str, ttl_seconds: int | None = None,
-        response_headers: dict[str, str] | None = None,
+        response_headers: dict[str, str] | None = None, *, private: bool = False,
     ) -> str:
-        ttl = dt.timedelta(seconds=ttl_seconds if ttl_seconds is not None else self.presigned_ttl)
-        return self._presign.presigned_get_object(bucket, key, ttl, response_headers=response_headers)
+        if ttl_seconds is not None:
+            ttl = ttl_seconds
+        else:
+            ttl = self.presigned_ttl_private if private else self.presigned_ttl
+        return self._presign.presigned_get_object(
+            bucket, key, dt.timedelta(seconds=ttl), response_headers=response_headers
+        )
 
     def download_to(self, bucket: str, key: str, dest_path: str) -> None:
         self._s3.fget_object(bucket, key, dest_path)
@@ -186,5 +193,6 @@ def get_storage() -> Storage:
             client,
             presign_client=presign_client,
             presigned_ttl=settings.presigned_ttl_seconds,
+            presigned_ttl_private=settings.presigned_ttl_private_seconds,
         )
     return _storage

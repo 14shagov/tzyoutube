@@ -14,7 +14,7 @@
 
 ## Решение
 
-Вариант 3: presigned GET с TTL 4 часа (настраивается `PRESIGNED_TTL_SECONDS`), выдача только после `check_video_access`. Превью публичных видео — из бакета `thumbnails` (public-read) через NGINX `/media/thumbnails/`; превью приватных — presigned. Бакет `raw` не раздаётся никогда.
+Вариант 3: presigned GET с TTL 3600 с для публичных / 900 с для приватных (`PRESIGNED_TTL_SECONDS` / `PRESIGNED_TTL_PRIVATE_SECONDS`), выдача только после `check_video_access`. Превью публичных видео — из бакета `thumbnails` (public-read) через NGINX `/media/thumbnails/`; превью приватных — presigned. Бакет `raw` не раздаётся никогда.
 
 ### Host presigned URL за reverse proxy
 
