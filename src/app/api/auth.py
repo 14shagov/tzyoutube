@@ -69,6 +69,12 @@ class SqlUserRepo:
         await self._session.commit()
         return result.rowcount > 0
 
+    async def purge_expired_sessions(self) -> int:
+        stmt = delete(SessionToken).where(SessionToken.expires_at <= auth.utc_now())
+        result = await self._session.execute(stmt)
+        await self._session.commit()
+        return result.rowcount
+
 
 async def get_user_repo(
     session: AsyncSession = Depends(get_db_session),

@@ -72,3 +72,13 @@ class FakeUserRepo:
         if session_id in lst:
             lst.remove(session_id)
         return True
+
+    async def purge_expired_sessions(self) -> int:
+        now = datetime.now(UTC)
+        expired = [sid for sid, t in self.sessions.items() if t.expires_at <= now]
+        for sid in expired:
+            token = self.sessions.pop(sid)
+            lst = self.by_user_sessions.get(token.user_id, [])
+            if sid in lst:
+                lst.remove(sid)
+        return len(expired)

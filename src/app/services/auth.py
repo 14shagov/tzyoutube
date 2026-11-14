@@ -83,6 +83,9 @@ class UserRepo(Protocol):
 
     async def delete_session(self, session_id: uuid.UUID) -> bool: ...
 
+    async def purge_expired_sessions(self) -> int:
+        """Delete all expired sessions; return how many were removed."""
+
 
 class RateLimiter(Protocol):
     async def hit(self, key: str, limit: int, window: timedelta) -> bool:
@@ -158,6 +161,9 @@ async def login(
         await limiter.hit(key, limit=limit, window=window)
         raise AccountBlocked()
     # Success consumes NO budget: only failed attempts count.
+    # Opportunistic cleanup: purge expired sessions on every successful
+    # login — no cron needed (B7). Failed logins never write here.
+    await repo.purge_expired_sessions()
     token = await repo.create_session(user.id, session_expiry(ttl_days))
     return token, user
 
