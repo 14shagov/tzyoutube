@@ -5,6 +5,8 @@ so tests can override them with fakes.
 """
 
 import asyncio
+import re
+import secrets
 import tempfile
 import uuid
 from pathlib import Path
@@ -50,14 +52,19 @@ async def _optional_user(
     return await auth_service.resolve_session(repo, sid)
 
 
+# Guest fingerprint charset: the DB column is String(64); anything outside
+# this set is rejected and replaced by a fresh server-issued token.
+_GUEST_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
 def _guest_fingerprint(response: Response, existing: str | None) -> str:
     """Stable per-browser id for guest view dedup (FR-2.3).
 
-    Reuses the id sent by the browser; sets a fresh one only when absent.
+    Reuses the id sent by the browser ONLY if it matches the strict charset;
+    otherwise (or when absent) issues a fresh token — a malformed/oversized
+    cookie must never reach the DB as a fingerprint.
     """
-    import secrets
-
-    if existing:
+    if existing and _GUEST_ID_RE.match(existing):
         return existing
     guest_id = secrets.token_urlsafe(24)
     response.set_cookie("guest_id", guest_id, max_age=365 * 24 * 3600,
@@ -266,7 +273,7 @@ async def video_card(
 async def register_view(
     video_id: uuid.UUID,
     response: Response,
-    guest_id: str | None = Cookie(default=None),
+    guest_id: Annotated[str | None, Cookie(max_length=64)] = None,
     user: User | None = Depends(_optional_user),
     repo=Depends(get_video_repo),
     view_repo=Depends(get_view_repo),
@@ -363,7 +370,9 @@ async def list_comments(
 @router.post("", response_model=VideoOut, status_code=http_status.HTTP_202_ACCEPTED)
 async def upload_video(
     file: UploadFile = File(...),
-    title: str = Form(""),
+    # Video.title is String(200): bound at validation so an over-length
+    # title is a 422, not a DB error (500).
+    title: Annotated[str, Form(max_length=200)] = "",
     description: str = Form(""),
     user: User = Depends(get_current_user),
     repo: SqlVideoRepo = Depends(get_video_repo),
