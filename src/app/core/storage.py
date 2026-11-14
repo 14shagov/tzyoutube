@@ -134,11 +134,16 @@ def get_storage() -> Storage:
         from minio import Minio
 
         settings = get_settings()
+        # region= is REQUIRED on both clients: without it minio-py performs
+        # a GetBucketLocation network call on every presigned_* (real-stack
+        # 500: public host unreachable from the web container). Signing
+        # itself stays a local HMAC computation.
         client = Minio(
             settings.s3_endpoint,
             access_key=settings.s3_access_key,
             secret_key=settings.s3_secret_key,
             secure=settings.s3_secure,
+            region=settings.s3_region,
         )
         # ADR-003: presign against the PUBLIC endpoint so the signed URL
         # host matches what the browser uses (nginx → silo). Signing is
@@ -148,6 +153,7 @@ def get_storage() -> Storage:
             access_key=settings.s3_access_key,
             secret_key=settings.s3_secret_key,
             secure=False,  # public entry is plain HTTP on port 80
+            region=settings.s3_region,
         )
         _storage = Storage(
             client,

@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     s3_access_key: str = "devkey"
     s3_secret_key: str = "devsecret"
     s3_secure: bool = False
+    # Explicit region for BOTH Minio clients: without it minio-py asks the
+    # server GetBucketLocation (?location=) over the network on every
+    # presigned_* call — unreachable from the web container via the public
+    # host. Must match the server's MINIO_REGION (docker-compose).
+    s3_region: str = "us-east-1"
     presigned_ttl_seconds: int = 4 * 3600
 
     # Uploads
