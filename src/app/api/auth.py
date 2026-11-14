@@ -173,7 +173,14 @@ async def logout(
 ) -> None:
     if session_id is None:
         raise HTTPException(401, "not authenticated")
-    await repo.delete_session(uuid.UUID(session_id))
+    # Idempotent: a malformed cookie means "nothing to delete" — still 204
+    # and the cookie is cleared, instead of a 500 from uuid.UUID(...).
+    try:
+        sid = uuid.UUID(session_id)
+    except ValueError:
+        sid = None
+    if sid is not None:
+        await repo.delete_session(sid)
     response.delete_cookie("session_id", path="/")
 
 
