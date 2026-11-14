@@ -88,6 +88,9 @@ class RateLimiter(Protocol):
     async def hit(self, key: str, limit: int, window: timedelta) -> bool:
         """Record an event for `key`; return True if still under `limit`."""
 
+    async def check(self, key: str, limit: int, window: timedelta) -> bool:
+        """Return True if `key` is under `limit` WITHOUT recording (peek)."""
+
 
 async def throttle(
     limiter: RateLimiter, scope: str, client_key: str, *, limit: int, window: timedelta
@@ -113,6 +116,21 @@ async def register(
     return user
 
 
+_DUMMY_HASH: str | None = None
+
+
+def _dummy_password_hash() -> str:
+    """Process-cached hash of a dummy password at the CURRENT bcrypt cost.
+
+    Login verifies unknown emails against it so the response time matches
+    the known-email path — no user enumeration through timing.
+    """
+    global _DUMMY_HASH
+    if _DUMMY_HASH is None:
+        _DUMMY_HASH = hash_password("timing-equalization-dummy")
+    return _DUMMY_HASH
+
+
 async def login(
     repo: UserRepo,
     limiter: RateLimiter,
@@ -121,13 +139,25 @@ async def login(
     password: str,
     ttl_days: int,
 ) -> tuple[SessionToken, User]:
-    if not await limiter.hit(f"login:{client_key}", limit=5, window=timedelta(minutes=10)):
+    key = f"login:{client_key}"
+    limit, window = 5, timedelta(minutes=10)
+    # Peek first: once the failure budget is spent, reject WITHOUT hashing —
+    # even valid credentials must not bypass the limit.
+    if not await limiter.check(key, limit=limit, window=window):
         raise RateLimited()
     user = await repo.get_by_email(email)
-    if user is None or not verify_password(password, user.password_hash):
+    if user is None:
+        # Unknown email: still burn one bcrypt verify so timing matches.
+        verify_password(password, _dummy_password_hash())
+        await limiter.hit(key, limit=limit, window=window)
+        raise InvalidCredentials()
+    if not verify_password(password, user.password_hash):
+        await limiter.hit(key, limit=limit, window=window)
         raise InvalidCredentials()
     if user.is_blocked:
+        await limiter.hit(key, limit=limit, window=window)
         raise AccountBlocked()
+    # Success consumes NO budget: only failed attempts count.
     token = await repo.create_session(user.id, session_expiry(ttl_days))
     return token, user
 

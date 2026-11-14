@@ -35,6 +35,12 @@ class InMemoryRateLimiter:
         events.append(now)
         return True
 
+    async def check(self, key: str, limit: int, window: timedelta) -> bool:
+        now = self._clock()
+        cutoff = now - window.total_seconds()
+        self._events[key] = [t for t in self._events[key] if t > cutoff]
+        return len(self._events[key]) < limit
+
 
 class RedisRateLimiter:
     """Sliding-window counter over a sorted set (production backend)."""
@@ -56,6 +62,15 @@ class RedisRateLimiter:
         await self._redis.zadd(key, {member: now})
         await self._redis.expire(key, int(window.total_seconds()) + 1)
         return True
+
+    async def check(self, key: str, limit: int, window: timedelta) -> bool:
+        now = time.time()
+        cutoff = now - window.total_seconds()
+        pipe = self._redis.pipeline()
+        pipe.zremrangebyscore(key, "-inf", cutoff)
+        pipe.zcard(key)
+        count = (await pipe.execute())[1]
+        return count < limit
 
 
 def get_rate_limiter() -> InMemoryRateLimiter | RedisRateLimiter:
