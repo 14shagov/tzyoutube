@@ -11,7 +11,6 @@ until then.
 
 import uuid
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.api import videos as videos_api
@@ -21,13 +20,13 @@ from app.models import User, Video
 
 
 def _user(**kw) -> User:
-    base = dict(
-        id=uuid.uuid4(),
-        email="u@example.com",
-        password_hash="x",
-        channel_name="chan",
-        role="user",
-    )
+    base = {
+        "id": uuid.uuid4(),
+        "email": "u@example.com",
+        "password_hash": "x",
+        "channel_name": "chan",
+        "role": "user",
+    }
     base.update(kw)
     return User(**base)
 
@@ -94,7 +93,9 @@ def _client(channel_repo, sub_repo, user=None):
     app.dependency_overrides[channels_api.get_channel_repo] = lambda: channel_repo
     app.dependency_overrides[channels_api.get_subscription_repo] = lambda: sub_repo
     app.dependency_overrides[videos_api._optional_user] = lambda: user
-    app.dependency_overrides[get_current_user] = lambda: user
+    if user is not None:
+        # Guest case: leave the real get_current_user in place so it 401s.
+        app.dependency_overrides[get_current_user] = lambda: user
     return TestClient(app)
 
 

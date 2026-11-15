@@ -10,7 +10,7 @@ import uuid
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Comment, Reaction, Video, VideoAcl, VideoView
+from app.models import Comment, Reaction, Subscription, User, Video, VideoAcl, VideoView
 
 
 def escape_ilike(value: str, escape: str = "\\") -> str:
@@ -161,6 +161,127 @@ class SqlCommentRepo:
             select(Comment)
             .where(Comment.video_id == video_id)
             .order_by(Comment.created_at.asc())
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+
+class SqlChannelRepo:
+    """Channel profile + channel video listing (FR-3, stage 3A).
+
+    Visibility rule: the owner sees every non-deleted video of the channel
+    (including private/hidden/processing — with the status in the response);
+    everyone else sees only ready+public ones.
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def get_user(self, user_id: uuid.UUID) -> User | None:
+        return await self.session.get(User, user_id)
+
+    async def subscriber_count(self, channel_id: uuid.UUID) -> int:
+        stmt = select(func.count()).select_from(Subscription).where(
+            Subscription.channel_id == channel_id
+        )
+        return int((await self.session.execute(stmt)).scalar_one())
+
+    async def public_video_count(self, channel_id: uuid.UUID) -> int:
+        stmt = select(func.count()).select_from(Video).where(
+            Video.user_id == channel_id,
+            Video.status == "ready",
+            Video.is_private.is_(False),
+        )
+        return int((await self.session.execute(stmt)).scalar_one())
+
+    async def list_channel_videos(
+        self, channel_id: uuid.UUID, *, viewer_id: uuid.UUID | None, limit: int, offset: int
+    ):
+        stmt = select(Video).where(Video.user_id == channel_id)
+        if viewer_id == channel_id:
+            stmt = stmt.where(Video.status != "deleted")
+        else:
+            # Hidden/failed/processing/private stay invisible to non-owners (3E).
+            stmt = stmt.where(Video.status == "ready", Video.is_private.is_(False))
+        stmt = stmt.order_by(Video.created_at.desc()).limit(limit).offset(offset)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def channel_name_taken(self, name: str, *, exclude_user_id: uuid.UUID) -> bool:
+        stmt = select(func.count()).select_from(User).where(
+            User.channel_name == name, User.id != exclude_user_id
+        )
+        return (await self.session.execute(stmt)).scalar_one() > 0
+
+    async def update_channel(
+        self, user: User, *, channel_name: str | None, description: str | None
+    ) -> User:
+        if channel_name is not None:
+            user.channel_name = channel_name
+        if description is not None:
+            user.channel_description = description
+        self.session.add(user)
+        await self.session.commit()
+        await self.session.refresh(user)
+        return user
+
+
+class SqlSubscriptionRepo:
+    """Subscriptions (FR-3): idempotent subscribe/unsubscribe, my channels, sub feed."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def is_subscribed(self, subscriber_id: uuid.UUID, channel_id: uuid.UUID) -> bool:
+        stmt = select(func.count()).select_from(Subscription).where(
+            Subscription.subscriber_id == subscriber_id,
+            Subscription.channel_id == channel_id,
+        )
+        return (await self.session.execute(stmt)).scalar_one() > 0
+
+    async def subscribe(self, subscriber_id: uuid.UUID, channel_id: uuid.UUID) -> None:
+        if await self.is_subscribed(subscriber_id, channel_id):
+            return  # idempotent
+        self.session.add(Subscription(subscriber_id=subscriber_id, channel_id=channel_id))
+        await self.session.commit()
+
+    async def unsubscribe(self, subscriber_id: uuid.UUID, channel_id: uuid.UUID) -> None:
+        await self.session.execute(
+            delete(Subscription).where(
+                Subscription.subscriber_id == subscriber_id,
+                Subscription.channel_id == channel_id,
+            )
+        )
+        await self.session.commit()
+
+    async def subscribed_channels(
+        self, subscriber_id: uuid.UUID, *, limit: int, offset: int
+    ):
+        stmt = (
+            select(User)
+            .join(Subscription, Subscription.channel_id == User.id)
+            .where(Subscription.subscriber_id == subscriber_id)
+            .order_by(Subscription.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def subscriptions_feed(
+        self, subscriber_id: uuid.UUID, *, limit: int, offset: int
+    ):
+        stmt = (
+            select(Video)
+            .join(Subscription, Subscription.channel_id == Video.user_id)
+            .where(
+                Subscription.subscriber_id == subscriber_id,
+                Video.status == "ready",
+                Video.is_private.is_(False),
+            )
+            .order_by(Video.created_at.desc())
             .limit(limit)
             .offset(offset)
         )

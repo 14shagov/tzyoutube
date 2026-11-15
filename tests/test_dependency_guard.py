@@ -78,6 +78,9 @@ def _guard_app():
     # .first() comes out async too — replace with a plain callable so
     # SqlUserRepo.get_session_with_user gets a real (token, user) row.
     session.execute.return_value.first = lambda: (token, user)
+    # Entity lookups (session.get(Model, id)) must 404 cleanly instead of
+    # returning a truthy Mock, so endpoints that fetch by id are testable.
+    session.get.return_value = None
 
     async def _session_override():
         yield session

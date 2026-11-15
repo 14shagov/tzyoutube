@@ -36,6 +36,8 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     channel_name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    # 3A: channel profile description (FR-3), empty by default.
+    channel_description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     role: Mapped[str] = mapped_column(String(16), nullable=False, default="user")
     is_blocked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -162,6 +164,26 @@ class Comment(Base):
     __table_args__ = (
         Index("ix_comments_video_created", "video_id", "created_at"),
     )
+
+
+class Subscription(Base):
+    """3B: user -> channel subscription (channel_id IS users.id)."""
+
+    __tablename__ = "subscriptions"
+
+    subscriber_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    channel_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (Index("ix_subscriptions_channel", "channel_id"),)
 
 
 class VideoAcl(Base):
