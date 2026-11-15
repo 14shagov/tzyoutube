@@ -14,10 +14,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
+from app.api.playlists import PlaylistListOut, get_playlist_repo
 from app.api.videos import FeedItem, FeedOut, _optional_user, _thumb_url
 from app.core.db import get_db_session
 from app.models import User
 from app.services import social
+from app.services.playlists import PlaylistRepo
 from app.services.social import ChannelRepo, SubscriptionRepo
 
 router = APIRouter(prefix="/api/channels", tags=["channels"])
@@ -167,6 +169,31 @@ async def patch_channel(
         # Self-subscription is forbidden, so the owner's own flag is False.
         await sub_repo.is_subscribed(user.id, channel_id),
     )
+
+
+@router.get("/{channel_id}/playlists", response_model=PlaylistListOut)
+async def channel_playlists(
+    channel_id: uuid.UUID,
+    limit: Annotated[int, Query(ge=0, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    viewer: User | None = Depends(_optional_user),
+    channel_repo: ChannelRepo = Depends(get_channel_repo),
+    playlist_repo: PlaylistRepo = Depends(get_playlist_repo),
+) -> PlaylistListOut:
+    """3D: playlists of a channel — public ones for everyone, private only for the owner."""
+    if await channel_repo.get_user(channel_id) is None:
+        raise HTTPException(404, "channel not found")
+    playlists = await playlist_repo.list_channel_playlists(
+        channel_id,
+        viewer_id=viewer.id if viewer else None,
+        limit=limit,
+        offset=offset,
+    )
+    from app.api.playlists import _out
+
+    return PlaylistListOut(items=[
+        _out(p, item_count=await playlist_repo.item_count(p.id)) for p in playlists
+    ])
 
 
 # --- 3B: subscriptions ------------------------------------------------------

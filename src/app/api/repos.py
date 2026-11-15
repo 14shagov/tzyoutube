@@ -10,7 +10,18 @@ import uuid
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Comment, Reaction, Subscription, User, Video, VideoAcl, VideoView
+from app.models import (
+    Comment,
+    Playlist,
+    PlaylistItem,
+    Reaction,
+    Subscription,
+    User,
+    Video,
+    VideoAcl,
+    VideoView,
+)
+from app.services.playlists import DuplicateItem
 
 
 def escape_ilike(value: str, escape: str = "\\") -> str:
@@ -329,3 +340,83 @@ class SqlAclRepo:
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+
+class SqlPlaylistRepo:
+    """Playlists (FR-3, stage 3D). Private playlists are filtered out for
+    everyone but the owner at the query level."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def create(self, playlist: Playlist) -> Playlist:
+        self.session.add(playlist)
+        await self.session.commit()
+        await self.session.refresh(playlist)
+        return playlist
+
+    async def get(self, playlist_id: uuid.UUID) -> Playlist | None:
+        return await self.session.get(Playlist, playlist_id)
+
+    async def update(self, playlist: Playlist) -> Playlist:
+        self.session.add(playlist)
+        await self.session.commit()
+        await self.session.refresh(playlist)
+        return playlist
+
+    async def delete(self, playlist_id: uuid.UUID) -> None:
+        await self.session.execute(
+            delete(Playlist).where(Playlist.id == playlist_id)
+        )
+        await self.session.commit()
+
+    async def list_channel_playlists(
+        self, channel_id: uuid.UUID, *, viewer_id: uuid.UUID | None, limit: int, offset: int
+    ):
+        stmt = select(Playlist).where(Playlist.user_id == channel_id)
+        if viewer_id != channel_id:
+            stmt = stmt.where(Playlist.is_private.is_(False))
+        stmt = stmt.order_by(Playlist.created_at.desc()).limit(limit).offset(offset)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def add_item(self, playlist_id, video_id, position: int) -> PlaylistItem:
+        exists = await self.session.get(PlaylistItem, (playlist_id, video_id))
+        if exists is not None:
+            raise DuplicateItem("video already in playlist")
+        item = PlaylistItem(playlist_id=playlist_id, video_id=video_id, position=position)
+        self.session.add(item)
+        await self.session.commit()
+        await self.session.refresh(item)
+        return item
+
+    async def remove_item(self, playlist_id, video_id) -> None:
+        await self.session.execute(
+            delete(PlaylistItem).where(
+                PlaylistItem.playlist_id == playlist_id,
+                PlaylistItem.video_id == video_id,
+            )
+        )
+        await self.session.commit()
+
+    async def list_items_with_videos(self, playlist_id):
+        stmt = (
+            select(PlaylistItem, Video)
+            .join(Video, Video.id == PlaylistItem.video_id)
+            .where(PlaylistItem.playlist_id == playlist_id)
+            .order_by(PlaylistItem.position)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.all())
+
+    async def max_position(self, playlist_id) -> int:
+        stmt = select(func.max(PlaylistItem.position)).where(
+            PlaylistItem.playlist_id == playlist_id
+        )
+        return (await self.session.execute(stmt)).scalar_one() or 0
+
+    async def item_count(self, playlist_id) -> int:
+        stmt = select(func.count()).select_from(PlaylistItem).where(
+            PlaylistItem.playlist_id == playlist_id
+        )
+        return int((await self.session.execute(stmt)).scalar_one())

@@ -10,16 +10,16 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
+from test_channels_api import FakeChannelRepo, _user
+from test_video_manage_api import FakeAclRepo, FakeVideoRepo, _video
 
 from app.api import channels as channels_api
 from app.api import playlists as playlists_api
 from app.api import videos as videos_api
 from app.api.auth import get_current_user
 from app.main import create_app
-from app.models import Playlist, PlaylistItem, Video
+from app.models import Playlist, PlaylistItem
 from app.services.playlists import DuplicateItem
-from test_channels_api import _user
-from test_video_manage_api import FakeAclRepo, FakeVideoRepo, _video
 
 
 class FakePlaylistRepo:
@@ -73,7 +73,7 @@ class FakePlaylistRepo:
         return pairs
 
     async def max_position(self, playlist_id):
-        return max((i.position for i in self.items.get(playlist_id, {})), default=0)
+        return max((i.position for i in self.items.get(playlist_id, {}).values()), default=0)
 
     async def item_count(self, playlist_id):
         return len(self.items.get(playlist_id, {}))
@@ -86,11 +86,14 @@ def _playlist(owner_id, title="pl", is_private=False) -> Playlist:
     )
 
 
-def _client(playlist_repo, video_repo=None, user=None):
+def _client(playlist_repo, video_repo=None, user=None, channel_repo=None):
     app = create_app()
     app.dependency_overrides[playlists_api.get_playlist_repo] = lambda: playlist_repo
     app.dependency_overrides[videos_api.get_video_repo] = lambda: video_repo or FakeVideoRepo()
     app.dependency_overrides[videos_api.get_acl] = lambda: FakeAclRepo()
+    app.dependency_overrides[channels_api.get_channel_repo] = lambda: (
+        channel_repo or FakeChannelRepo({user.id: user} if user else {})
+    )
     # guest-tolerant user for reads: always override _optional_user
     app.dependency_overrides[videos_api._optional_user] = lambda: user
     if user is not None:
@@ -260,18 +263,22 @@ def test_remove_item_idempotent_owner_only() -> None:
 
 def test_channel_playlists_visibility() -> None:
     owner = _user()
-    other = _user(email="o@example.com", channel_name="other")
     pub_pl = _playlist(owner.id, title="pub")
     priv_pl = _playlist(owner.id, title="priv", is_private=True)
     repo = FakePlaylistRepo([pub_pl, priv_pl])
+    channels = FakeChannelRepo({owner.id: owner})
     # guest: only public
-    resp = _client(repo, user=None).get(f"/api/channels/{owner.id}/playlists")
+    resp = _client(repo, user=None, channel_repo=channels).get(
+        f"/api/channels/{owner.id}/playlists"
+    )
     assert resp.status_code == 200, resp.text
     assert [i["title"] for i in resp.json()["items"]] == ["pub"]
     # owner: both
-    resp = _client(repo, user=owner).get(f"/api/channels/{owner.id}/playlists")
+    resp = _client(repo, user=owner, channel_repo=channels).get(
+        f"/api/channels/{owner.id}/playlists"
+    )
     assert sorted(i["title"] for i in resp.json()["items"]) == ["priv", "pub"]
     # unknown channel 404
-    assert _client(repo, user=None).get(
+    assert _client(repo, user=None, channel_repo=FakeChannelRepo({})).get(
         f"/api/channels/{uuid.uuid4()}/playlists"
     ).status_code == 404
