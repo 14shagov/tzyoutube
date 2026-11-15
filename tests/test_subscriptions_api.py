@@ -8,11 +8,11 @@ GET /api/feed/subscriptions     — videos of subscribed channels (auth)
 import uuid
 
 from fastapi.testclient import TestClient
+from test_channels_api import FakeChannelRepo, _user, _video
 
 from app.api import videos as videos_api
 from app.api.auth import get_current_user
 from app.main import create_app
-from test_channels_api import FakeChannelRepo, _user, _video
 
 
 class FakeSubRepo:
