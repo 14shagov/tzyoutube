@@ -7,11 +7,11 @@ staff, or ACL member only; unknown/deleted -> 404 for everyone.
 import uuid
 
 from fastapi.testclient import TestClient
+from test_channels_api import _user
+from test_video_manage_api import FakeAclRepo, FakeVideoRepo, _video
 
 from app.api import videos as videos_api
 from app.main import create_app
-from test_channels_api import _user
-from test_video_manage_api import FakeAclRepo, FakeVideoRepo, _video
 
 
 def _client(video_repo, acl=None, optional=None):

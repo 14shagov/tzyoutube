@@ -327,6 +327,33 @@ async def video_card(
     )
 
 
+class VideoStatusOut(BaseModel):
+    id: uuid.UUID
+    status: str
+    failure_reason: str | None = None
+
+
+@router.get("/{video_id}/status", response_model=VideoStatusOut)
+async def video_status(
+    video_id: uuid.UUID,
+    user: User | None = Depends(_optional_user),
+    repo=Depends(get_video_repo),
+    acl=Depends(get_acl),
+) -> VideoStatusOut:
+    """FR: upload progress polling — ready+public for anyone; owner/staff may
+    see any non-deleted state (processing/failed/hidden), ACL members private."""
+    from app.services import access
+
+    video = await repo.get(video_id)
+    if video is None or video.status == "deleted":
+        raise HTTPException(404, "not found")
+    is_owner = user is not None and user.id == video.user_id
+    is_staff = user is not None and user.role in access.STAFF_ROLES
+    if not (is_owner or is_staff) and not await access.can_view_with_acl(video, user, acl):
+        raise HTTPException(404, "not found")  # hide existence, same as the card
+    return VideoStatusOut(id=video.id, status=video.status, failure_reason=video.failure_reason)
+
+
 @router.post("/{video_id}/view", status_code=http_status.HTTP_204_NO_CONTENT)
 async def register_view(
     video_id: uuid.UUID,
