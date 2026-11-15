@@ -11,7 +11,7 @@ import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import (
     APIRouter,
@@ -376,10 +376,14 @@ async def register_view(
     await interactions.register_view(view_repo, video_id, user, fingerprint)
 
 
+class ReactionIn(BaseModel):
+    value: Literal[1, -1, 0]
+
+
 @router.post("/{video_id}/reactions", response_model=ReactionOut)
 async def set_reaction(
     video_id: uuid.UUID,
-    payload: dict,
+    payload: ReactionIn,
     user: User = Depends(get_current_user),
     repo=Depends(get_video_repo),
     reaction_repo=Depends(get_reaction_repo),
@@ -390,13 +394,8 @@ async def set_reaction(
     video = await repo.get(video_id)
     if video is None or not await access.can_view_with_acl(video, user, acl):
         raise HTTPException(404, "not found")
-    try:
-        value = int(payload.get("value", 0))
-    except (TypeError, ValueError):
-        raise HTTPException(422, "value must be 1, -1 or 0") from None
-    if value not in (1, -1, 0):
-        raise HTTPException(422, "value must be 1, -1 or 0")
-    await interactions.set_reaction(reaction_repo, user.id, video_id, value)
+    # Literal[1, -1, 0] on ReactionIn rejects anything else with a typed 422.
+    await interactions.set_reaction(reaction_repo, user.id, video_id, payload.value)
     likes, dislikes = await reaction_repo.counts(video_id)
     return ReactionOut(likes=likes, dislikes=dislikes)
 

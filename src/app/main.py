@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from pydantic import BaseModel
 
 from app.api import auth as auth_api
 from app.api import channels as channels_api
@@ -76,9 +77,12 @@ def create_app() -> FastAPI:
     # browser requests (docs/security.md).
     app.add_middleware(CsrfMiddleware)
 
-    @app.get("/health")
-    async def health() -> dict[str, str]:
-        return {"status": "ok"}
+    class HealthOut(BaseModel):
+        status: str
+
+    @app.get("/health", response_model=HealthOut)
+    async def health() -> HealthOut:
+        return HealthOut(status="ok")
 
     app.include_router(auth_api.router)
     app.include_router(videos_api.router)
