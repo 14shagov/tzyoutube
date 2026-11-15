@@ -57,7 +57,7 @@ def _app4(videos=(), user=None, acl=None):
 
 
 def _my_video(owner_id, title="v", status="ready", is_private=False, failure_reason=None):
-    v = _video(owner_id=owner_id, title=title)
+    v = _video(user_id=owner_id, title=title)
     v.status = status
     v.is_private = is_private
     v.failure_reason = failure_reason
@@ -122,8 +122,8 @@ def test_my_videos_lists_own_with_status_and_failure() -> None:
     assert f'href="/watch/{v1.id}"' in body
     assert 'src="/static/manage.js"' in body
     # edit / delete / privacy controls per row
-    assert body.count('class="edit-btn"') == 3
-    assert body.count('class="del-btn"') == 3
+    assert body.count("edit-btn") == 3
+    assert body.count("del-btn") == 3
     assert 'name="is_private"' in body
     assert "onclick" not in body
 

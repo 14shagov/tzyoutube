@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Загрузка{% endblock %}
+{% block content %}
+<h1 class="page-title">Загрузить видео</h1>
+<div class="upload-wrap" data-max-size="{{ max_size }}">
+  <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Выберите файл или перетащите сюда">
+    <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0 4 4m-4-4-4 4"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+    <p>Перетащите файл сюда или нажмите, чтобы выбрать</p>
+    <p class="muted">video/mp4, mov, webm, mkv, avi · до {{ max_size_label }}</p>
+    <input id="file-input" type="file" accept="video/mp4,video/quicktime,video/webm,video/x-matroska,video/x-msvideo" hidden>
+  </div>
+  <div id="file-info" class="file-info" hidden>
+    <span id="file-name"></span> <span id="file-size" class="muted"></span>
+  </div>
+  <div class="upload-meta">
+    <label>Название <input id="title-input" type="text" maxlength="200" required placeholder="Название видео"></label>
+    <label>Описание <textarea id="desc-input" rows="4" maxlength="5000" placeholder="Описание (необязательно)"></textarea></label>
+  </div>
+  <progress id="progress" value="0" max="100" hidden></progress>
+  <div class="upload-actions">
+    <button id="upload-btn" class="btn primary" type="button" disabled>Загрузить</button>
+    <span id="upload-error" class="form-error" role="alert" hidden></span>
+  </div>
+  <div id="upload-status" class="upload-status" hidden>
+    <p id="status-text">Обрабатывается…</p>
+    <a id="status-link" class="btn" href="#" hidden>Открыть страницу видео</a>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/upload.js"></script>{% endblock %}

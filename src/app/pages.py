@@ -305,3 +305,66 @@ async def watch_page(
         "comment_count": len(comment_rows),
         "recs": recs,
     })
+
+
+# --- F4: upload + my videos ------------------------------------------------------
+
+
+def _require_user_page(user, next_path: str):
+    """Pages that need a session redirect guests to /login?next=..."""
+    if user is None:
+        return RedirectResponse(f"/login?next={next_path}", status_code=303)
+    return None
+
+
+@router.get("/upload", response_class=HTMLResponse, include_in_schema=False)
+async def upload_page(
+    request: Request,
+    user=Depends(videos_api._optional_user),
+    settings=Depends(videos_api.get_upload_settings),
+):
+    redirect = _require_user_page(user, "/upload")
+    if redirect is not None:
+        return redirect
+    return templates.TemplateResponse(request, "upload.html", {
+        "request": request, "user": _public_user(user), "page": "upload", "brand": BRAND,
+        "max_size": settings.max_upload_size,
+        "max_size_label": f"{settings.max_upload_size // (1024 * 1024)} МБ",
+    })
+
+
+@router.get("/me/videos", response_class=HTMLResponse, include_in_schema=False)
+async def my_videos_page(
+    request: Request,
+    user=Depends(videos_api._optional_user),
+    video_repo=Depends(videos_api.get_video_repo),
+    acl=Depends(videos_api.get_acl),
+):
+    redirect = _require_user_page(user, "/me/videos")
+    if redirect is not None:
+        return redirect
+    videos = await video_repo.list_user_videos(user.id, limit=100, offset=0)
+    rows = []
+    for v in videos:
+        entries = await acl.list_entries(v.id) if v.is_private else []
+        rows.append({
+            "id": v.id,
+            "title": v.title,
+            "status": v.status,
+            "status_label": {
+                "processing": "обрабатывается", "ready": "готово",
+                "failed": "ошибка", "hidden": "скрыто", "deleted": "удалено",
+            }.get(v.status, v.status),
+            "is_private": v.is_private,
+            "failure_reason": v.failure_reason,
+            "view_count": v.view_count,
+            "views_label": f"{v.view_count} {plural(int(v.view_count or 0), 'просмотр', 'просмотра', 'просмотров')}",
+            "duration": fmt_duration(getattr(v, "duration_seconds", 0)),
+            "date": time_ago(getattr(v, "created_at", None)),
+            "acl": [{"user_id": u.id, "email": u.email, "channel_name": u.channel_name}
+                    for u in entries],
+        })
+    return templates.TemplateResponse(request, "my_videos.html", {
+        "request": request, "user": _public_user(user), "page": "me", "brand": BRAND,
+        "rows": rows,
+    })
