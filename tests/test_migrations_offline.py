@@ -33,9 +33,11 @@ def test_offline_upgrade_generates_ddl_for_all_migrations() -> None:
     # Every table from db-schema.md must appear in the emitted DDL.
     for table in (
         "users", "sessions", "videos", "video_views",
-        "reactions", "comments", "video_acl", "alembic_version",
+        "reactions", "comments", "video_acl", "subscriptions", "alembic_version",
     ):
         assert table in sql, f"table {table!r} missing from offline DDL"
+    # 3A: channel description lives on users.
+    assert 'ALTER TABLE users ADD COLUMN channel_description' in sql
 
 
 def test_offline_ddl_has_no_inline_errors() -> None:
