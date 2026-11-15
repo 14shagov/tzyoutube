@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from app import pages as pages_api
 from app.api import auth as auth_api
 from app.api import channels as channels_api
 from app.api import moderation as moderation_api
@@ -91,6 +92,17 @@ def create_app() -> FastAPI:
     app.include_router(channels_api.api_router)
     app.include_router(playlists_api.router)
     app.include_router(moderation_api.router)
+    app.include_router(pages_api.router)
+
+    # F1 (ADR-007): static assets (CSS/JS) are served same-origin from the
+    # repo — no CDN, so CSP script-src 'self' holds (nginx adds the header).
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount(
+        "/static",
+        StaticFiles(directory=str(pages_api.STATIC_DIR)),
+        name="static",
+    )
 
     return app
 

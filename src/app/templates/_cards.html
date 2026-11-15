@@ -1,0 +1,32 @@
+{% if cards %}
+<div class="grid">
+  {% for c in cards %}
+  <a class="card" href="/watch/{{ c.id }}">
+    <div class="thumb">
+      {% if c.thumb %}
+      <img src="{{ c.thumb }}" alt="" loading="lazy">
+      {% else %}
+      <div class="thumb-ph">
+        <svg viewBox="0 0 24 24" width="40" height="40" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+      </div>
+      {% endif %}
+      <span class="dur">{{ c.duration }}</span>
+    </div>
+    <div class="card-meta">
+      <div class="avatar sm" aria-hidden="true">{{ c.channel_name[:1] | upper }}</div>
+      <div class="card-text">
+        <div class="card-title">{{ c.title }}</div>
+        <div class="card-sub"><span class="card-channel" data-channel-id="{{ c.channel_id }}">{{ c.channel_name }}</span></div>
+        <div class="card-sub">{{ c.views_label }} · {{ c.date }}</div>
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty" data-testid="empty">
+  <svg viewBox="0 0 24 24" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="m10 9 5 3-5 3z" fill="currentColor" stroke="none"/></svg>
+  <p class="empty-title">{{ empty_title | default('Пока нет видео') }}</p>
+  <p class="empty-sub">{{ empty_sub | default('') }}</p>
+</div>
+{% endif %}

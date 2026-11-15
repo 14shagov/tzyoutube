@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}{% if q %}Поиск: {{ q }}{% else %}Главная{% endif %}{% endblock %}
+{% block content %}
+{% if chips %}
+<div class="chips" role="tablist">
+  {% for chip in chips %}
+  <button class="chip{% if loop.first %} active{% endif %}" type="button">{{ chip }}</button>
+  {% endfor %}
+</div>
+{% endif %}
+{% if q %}<h1 class="page-title">Результаты по запросу «{{ q }}»</h1>{% endif %}
+{% include "_cards.html" %}
+{% endblock %}

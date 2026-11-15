@@ -11,12 +11,12 @@ import uuid
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from test_viewing_api import FakeFeedRepo, FakeVideoRepo, _video
 
 from app.api import auth as auth_api
 from app.api import videos as videos_api
 from app.main import create_app
 from app.services.fakes import FakeUserRepo
-from test_viewing_api import FakeFeedRepo, FakeVideoRepo, _video
 
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES = ROOT / "src" / "app" / "templates"
