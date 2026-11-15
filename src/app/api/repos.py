@@ -19,6 +19,7 @@ from app.models import (
     User,
     Video,
     VideoAcl,
+    VideoReport,
     VideoView,
 )
 from app.services.playlists import DuplicateItem
@@ -420,3 +421,59 @@ class SqlPlaylistRepo:
             PlaylistItem.playlist_id == playlist_id
         )
         return int((await self.session.execute(stmt)).scalar_one())
+
+
+class SqlReportRepo:
+    """Moderation reports (FR-7, stage 3E). One row per (video, reporter)
+    enforced by uq_video_reports_video_reporter."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def add(self, report: VideoReport) -> VideoReport:
+        self.session.add(report)
+        await self.session.commit()
+        await self.session.refresh(report)
+        return report
+
+    async def get(self, report_id: uuid.UUID) -> VideoReport | None:
+        return await self.session.get(VideoReport, report_id)
+
+    async def exists(self, video_id: uuid.UUID, reporter_id: uuid.UUID) -> bool:
+        stmt = select(func.count()).select_from(VideoReport).where(
+            VideoReport.video_id == video_id,
+            VideoReport.reporter_id == reporter_id,
+        )
+        return (await self.session.execute(stmt)).scalar_one() > 0
+
+    async def list(self, *, status: str | None, limit: int, offset: int):
+        stmt = select(VideoReport)
+        count_stmt = select(func.count()).select_from(VideoReport)
+        if status is not None:
+            stmt = stmt.where(VideoReport.status == status)
+            count_stmt = count_stmt.where(VideoReport.status == status)
+        stmt = stmt.order_by(VideoReport.created_at.desc()).limit(limit).offset(offset)
+        result = await self.session.execute(stmt)
+        total = int((await self.session.execute(count_stmt)).scalar_one())
+        return list(result.scalars().all()), total
+
+    async def mark_resolved(
+        self,
+        report_id: uuid.UUID,
+        *,
+        resolved_by: uuid.UUID,
+        resolved_at,
+        resolution: str,
+        note: str | None,
+    ) -> VideoReport:
+        report = await self.session.get(VideoReport, report_id)
+        assert report is not None
+        report.status = "dismissed" if resolution == "dismiss" else "resolved"
+        report.resolution = resolution
+        report.resolution_note = note
+        report.resolved_by = resolved_by
+        report.resolved_at = resolved_at
+        self.session.add(report)
+        await self.session.commit()
+        await self.session.refresh(report)
+        return report

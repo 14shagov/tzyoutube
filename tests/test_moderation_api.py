@@ -14,16 +14,16 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
+from test_channels_api import _user
+from test_video_manage_api import FakeAclRepo, FakeVideoRepo, _video
 
 from app.api import auth as auth_api
-from app.api import moderation as moderation_api  # noqa: F401  (lands in fix commit)
+from app.api import moderation as moderation_api
 from app.api import videos as videos_api
 from app.main import create_app
 from app.models import VideoReport
 from app.services.fakes import FakeUserRepo
 from app.services.rate_limit import InMemoryRateLimiter, get_rate_limiter
-from test_channels_api import _user
-from test_video_manage_api import FakeAclRepo, FakeVideoRepo, _video
 
 
 class FakeStorage:
@@ -292,16 +292,25 @@ def test_hidden_card_owner_gets_play_url_others_404() -> None:
 
 
 def test_admin_role_and_block_matrix() -> None:
+    # Two apps sharing the SAME repos: the plain user authenticates through
+    # real register/login (session cookie), the admin via get_current_user
+    # override on its own app instance.
     user_repo = FakeUserRepo()
-    app = create_app()
-    app.dependency_overrides[auth_api.get_user_repo] = lambda: user_repo
-    app.dependency_overrides[get_rate_limiter] = lambda: InMemoryRateLimiter()
-    app.dependency_overrides[moderation_api.get_report_repo] = lambda: FakeReportRepo()
-    admin = _user(email="a@example.com", channel_name="adm", role="admin")
-    app.dependency_overrides[auth_api.get_current_user] = lambda: admin
 
-    # register a plain user through the real auth endpoints
-    plain_client = TestClient(app)
+    def wire(current=None):
+        app = create_app()
+        app.dependency_overrides[auth_api.get_user_repo] = lambda: user_repo
+        app.dependency_overrides[get_rate_limiter] = lambda: InMemoryRateLimiter()
+        app.dependency_overrides[moderation_api.get_report_repo] = lambda: FakeReportRepo()
+        if current is not None:
+            app.dependency_overrides[auth_api.get_current_user] = lambda: current
+        return app
+
+    admin = _user(
+        email="a@example.com", channel_name="adm", role="admin",
+        is_blocked=False, created_at=datetime.now(UTC),
+    )
+    plain_client = TestClient(wire())
     r = plain_client.post("/auth/register", json={
         "email": "u@example.com", "password": "password123", "channel_name": "UserOne",
     })
@@ -311,7 +320,7 @@ def test_admin_role_and_block_matrix() -> None:
     }).status_code == 200
     target = r.json()["id"]
 
-    admin_client = TestClient(app)
+    admin_client = TestClient(wire(current=admin))
     # role change: user -> moderator, effective immediately (role re-read per request)
     r = admin_client.patch(f"/api/admin/users/{target}", json={"role": "moderator"})
     assert r.status_code == 200, r.text

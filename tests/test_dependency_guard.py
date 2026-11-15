@@ -12,6 +12,7 @@ fails the test.
 import uuid
 from contextlib import AsyncExitStack
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import create_autospec
 
 import pytest
@@ -78,6 +79,12 @@ def _guard_app():
     # .first() comes out async too — replace with a plain callable so
     # SqlUserRepo.get_session_with_user gets a real (token, user) row.
     session.execute.return_value.first = lambda: (token, user)
+    # 3E: list/scalar accessors must return real empty values so repo list
+    # endpoints (reports, feeds) serialize instead of choking on Mocks.
+    session.execute.return_value.scalars = lambda: SimpleNamespace(all=list)
+    session.execute.return_value.scalar_one_or_none = lambda: None
+    session.execute.return_value.scalar_one = lambda: 0
+    session.execute.return_value.scalar = lambda: 0
     # Entity lookups (session.get(Model, id)) must 404 cleanly instead of
     # returning a truthy Mock, so endpoints that fetch by id are testable.
     session.get.return_value = None

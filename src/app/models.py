@@ -241,3 +241,47 @@ class PlaylistItem(Base):
     __table_args__ = (
         Index("ix_playlist_items_position", "playlist_id", "position"),
     )
+
+
+class VideoReport(Base):
+    """3E: a user report against a video (FR-7). One per (video, reporter);
+    moderators resolve it with an audit trail (who/when/why)."""
+
+    __tablename__ = "video_reports"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    video_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False
+    )
+    reporter_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    reason: Mapped[str] = mapped_column(String(32), nullable=False)
+    comment: Mapped[str | None] = mapped_column(String(1000))
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="new")
+    # audit journal of the moderation decision
+    resolution: Mapped[str | None] = mapped_column(String(16))
+    resolution_note: Mapped[str | None] = mapped_column(String(500))
+    resolved_by: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('new','resolved','dismissed')", name="ck_video_reports_status"
+        ),
+        CheckConstraint(
+            "resolution IS NULL OR resolution IN ('hide','unhide','dismiss')",
+            name="ck_video_reports_resolution",
+        ),
+        CheckConstraint(
+            "reason IN ('spam','scam','violence','hate','sexual','misleading','copyright','other')",
+            name="ck_video_reports_reason",
+        ),
+        Index("uq_video_reports_video_reporter", "video_id", "reporter_id", unique=True),
+        Index("ix_video_reports_status_created", "status", "created_at"),
+    )

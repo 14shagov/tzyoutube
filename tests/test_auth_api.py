@@ -115,7 +115,8 @@ def test_role_guard_rejects_plain_user(client: TestClient) -> None:
         "email": "plain@example.com", "password": "password123", "channel_name": "Plain",
     })
     client.post("/auth/login", json={"email": "plain@example.com", "password": "password123"})
-    r = client.get("/admin/roles")  # admin-only demo endpoint (removed later)
+    # admin-only endpoint from group 3E (the old /admin/roles demo is gone)
+    r = client.patch(f"/api/admin/users/{uuid.uuid4()}", json={"role": "admin"})
     assert r.status_code == 403
 
 

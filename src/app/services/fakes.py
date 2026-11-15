@@ -82,3 +82,10 @@ class FakeUserRepo:
             if sid in lst:
                 lst.remove(sid)
         return len(expired)
+
+    async def get_by_id(self, user_id: uuid.UUID) -> User | None:
+        return self.users.get(user_id)
+
+    async def update_user(self, user: User) -> User:
+        self.users[user.id] = user
+        return user

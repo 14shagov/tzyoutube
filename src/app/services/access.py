@@ -35,9 +35,18 @@ PLAY_RESPONSE_HEADERS = {
 def can_view(video, user) -> bool:
     """Synchronous check: status, privacy, ownership, staff bypass.
 
+    3E: a hidden (moderated) video stays visible to its owner and staff —
+    they must see it to manage/unhide it. Everyone else gets False -> 404.
     ACL entries are checked separately in can_view_with_acl (they need I/O).
     """
-    if getattr(video, "status", None) != "ready":
+    status = getattr(video, "status", None)
+    if status == "deleted":
+        return False
+    if status == "hidden":
+        if user is None:
+            return False
+        return getattr(user, "role", "user") in STAFF_ROLES or user.id == video.user_id
+    if status != "ready":
         return False
     if not getattr(video, "is_private", False):
         return True
@@ -79,9 +88,23 @@ def video_play_url(storage: DeliveryStorage, video, ttl_seconds: int | None = No
     )
 
 
-def authorize_play_url(storage: DeliveryStorage, video, ttl_seconds: int | None = None) -> str | None:
-    """Presigned URL after the caller verified can_view_with_acl."""
-    if getattr(video, "status", None) != "ready":
+def authorize_play_url(
+    storage: DeliveryStorage,
+    video,
+    ttl_seconds: int | None = None,
+    *,
+    allow_hidden: bool = False,
+) -> str | None:
+    """Presigned URL after the caller verified can_view_with_acl.
+
+    3E: hidden videos may still be played by owner/staff (allow_hidden=True,
+    passed by view_or_none when the status is hidden); everyone else got
+    False from the access check and never reaches presigning.
+    """
+    status = getattr(video, "status", None)
+    if status == "ready" or status == "hidden" and allow_hidden:
+        pass
+    else:
         return None
     key = getattr(video, "video_key", None)
     if not key:
@@ -98,4 +121,7 @@ async def view_or_none(storage: DeliveryStorage, video, user, acl: AclRepo,
     """Combined gate: full access check, then presign. None → caller sends 404."""
     if not await can_view_with_acl(video, user, acl):
         return None
-    return authorize_play_url(storage, video, ttl_seconds=ttl_seconds)
+    return authorize_play_url(
+        storage, video, ttl_seconds=ttl_seconds,
+        allow_hidden=getattr(video, "status", None) == "hidden",
+    )

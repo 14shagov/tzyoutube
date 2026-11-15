@@ -34,7 +34,7 @@ def test_offline_upgrade_generates_ddl_for_all_migrations() -> None:
     for table in (
         "users", "sessions", "videos", "video_views",
         "reactions", "comments", "video_acl", "subscriptions",
-        "playlists", "playlist_items", "alembic_version",
+        "playlists", "playlist_items", "video_reports", "alembic_version",
     ):
         assert table in sql, f"table {table!r} missing from offline DDL"
     # 3A: channel description lives on users.
@@ -42,6 +42,10 @@ def test_offline_upgrade_generates_ddl_for_all_migrations() -> None:
     # 3D: playlists.
     assert "CREATE TABLE playlists" in sql
     assert "CREATE TABLE playlist_items" in sql
+    # 3E: moderation reports, one per (video, reporter), audit columns.
+    assert "CREATE TABLE video_reports" in sql
+    assert "uq_video_reports_video_reporter" in sql
+    assert "resolved_by" in sql and "resolution_note" in sql
 
 
 def test_offline_ddl_has_no_inline_errors() -> None:

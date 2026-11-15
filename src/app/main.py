@@ -4,17 +4,16 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 
 from app.api import auth as auth_api
 from app.api import channels as channels_api
+from app.api import moderation as moderation_api
 from app.api import playlists as playlists_api
 from app.api import videos as videos_api
-from app.api.deps import require_role
 from app.api.security import CsrfMiddleware
 from app.core.config import get_settings
 from app.core.storage import BUCKETS, get_storage
-from app.models import User
 from app.services.rate_limit import build_rate_limiter
 from app.worker.queue import build_queue
 
@@ -87,12 +86,7 @@ def create_app() -> FastAPI:
     app.include_router(channels_api.router)
     app.include_router(channels_api.api_router)
     app.include_router(playlists_api.router)
-
-    # Temporary demo endpoint to prove the role guard wiring works.
-    # Real admin endpoints arrive in stage 4 (plan 4.4).
-    @app.get("/admin/roles")
-    async def admin_roles(user: User = Depends(require_role("admin"))) -> dict[str, str]:
-        return {"role": user.role}
+    app.include_router(moderation_api.router)
 
     return app
 
