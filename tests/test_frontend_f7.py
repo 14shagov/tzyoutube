@@ -4,19 +4,15 @@ for API paths, and final no-external-URL guard over all templates/static."""
 import re
 from pathlib import Path
 
-import pytest
 from fastapi.testclient import TestClient
-
 from test_viewing_api import FakeStorage, _video
-from test_frontend_f5 import _VisChannelRepo
 
 from app.api import auth as auth_api
-from app.api import channels as channels_api
 from app.api import videos as videos_api
 from app.main import create_app
 from app.services.fakes import FakeUserRepo
 
-EXTERNAL = re.compile(r"https?://(?!localhost\b|127\.0\.0\.1\b)", re.I)
+EXTERNAL = re.compile(r"https?://(?!localhost\b|127\.0\.0\.1\b)", re.IGNORECASE)
 
 
 def _app(user=None, video=None):
@@ -68,8 +64,9 @@ def test_403_mod_for_plain_user_renders_error_page():
     user = _user(role="user", email="p@example.com", channel_name="plain")
     user.is_blocked = False
     app = create_app()
-    from app.api import moderation as moderation_api
     from test_moderation_api import FakeReportRepo
+
+    from app.api import moderation as moderation_api
 
     app.dependency_overrides[moderation_api.get_report_repo] = lambda: FakeReportRepo()
     app.dependency_overrides[auth_api.get_user_repo] = lambda: FakeUserRepo()
@@ -123,7 +120,7 @@ def test_no_inline_scripts_or_handlers_in_templates():
     root = Path(__file__).resolve().parent.parent / "src" / "app" / "templates"
     for f in root.rglob("*.html"):
         text = f.read_text(encoding="utf-8")
-        for script in re.findall(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", text, re.S | re.I):
+        for script in re.findall(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", text, re.DOTALL | re.IGNORECASE):
             assert not script.strip(), f"{f.name}: inline <script> body"
         assert not re.search(r"\son\w+\s*=", text), f"{f.name}: inline on*= handler"
         assert "|safe" not in text and "| safe" not in text, f"{f.name}: |safe used"
