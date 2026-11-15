@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from app.api import auth as auth_api
 from app.api import videos as videos_api
 from app.main import create_app
+from app.services.fakes import FakeUserRepo
 
 
 def _video(**overrides) -> SimpleNamespace:
@@ -150,6 +151,7 @@ def _make_app(videos: list):
     app.dependency_overrides[videos_api.get_storage] = lambda: storage
     app.dependency_overrides[videos_api.get_acl] = lambda: acl
     app.dependency_overrides[auth_api.get_current_user] = lambda: user
+    app.dependency_overrides[auth_api.get_user_repo] = lambda: FakeUserRepo()
     return app, {
         "video_repo": video_repo, "feed_repo": feed_repo, "view_repo": view_repo,
         "reaction_repo": reaction_repo, "comment_repo": comment_repo, "user": user,
@@ -220,11 +222,11 @@ def test_reaction_roundtrip(client: TestClient, one_video) -> None:
     v = one_video[0]
     r = client.post(f"/api/videos/{v.id}/reactions", json={"value": 1})
     assert r.status_code == 200
-    assert r.json() == {"likes": 1, "dislikes": 0}
+    assert r.json() == {"likes": 1, "dislikes": 0, "my_reaction": 1}
     r = client.post(f"/api/videos/{v.id}/reactions", json={"value": 1})
-    assert r.json() == {"likes": 0, "dislikes": 0}
+    assert r.json() == {"likes": 0, "dislikes": 0, "my_reaction": None}
     r = client.post(f"/api/videos/{v.id}/reactions", json={"value": -1})
-    assert r.json() == {"likes": 0, "dislikes": 1}
+    assert r.json() == {"likes": 0, "dislikes": 1, "my_reaction": -1}
 
 
 def test_reaction_requires_auth(client: TestClient, one_video) -> None:

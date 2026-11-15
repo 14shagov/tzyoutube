@@ -29,6 +29,16 @@
     });
   };
 
+  window.tzApi.post = function (path, body) {
+    return window.tzApi(path, { method: "POST", body: body || {} });
+  };
+  window.tzApi.del = function (path) {
+    return window.tzApi(path, { method: "DELETE" });
+  };
+  window.tzApi.patch = function (path, body) {
+    return window.tzApi(path, { method: "PATCH", body: body || {} });
+  };
+
   window.tzToast = function (msg, ok) {
     var t = document.getElementById("toast");
     if (!t) { return; }

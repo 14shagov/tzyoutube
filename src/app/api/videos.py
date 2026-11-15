@@ -205,6 +205,7 @@ class FeedOut(BaseModel):
 class ReactionOut(BaseModel):
     likes: int
     dislikes: int
+    my_reaction: int | None = None  # F3: watch page needs the caller's own reaction
 
 
 class CommentIn(BaseModel):
@@ -216,6 +217,8 @@ class CommentOut(BaseModel):
     id: uuid.UUID
     text: str
     parent_id: uuid.UUID | None
+    user_id: uuid.UUID | None = None      # F3: comment author (for rendering)
+    channel_name: str | None = None       # F3: author display name
 
 
 class CommentList(BaseModel):
@@ -397,7 +400,27 @@ async def set_reaction(
     # Literal[1, -1, 0] on ReactionIn rejects anything else with a typed 422.
     await interactions.set_reaction(reaction_repo, user.id, video_id, payload.value)
     likes, dislikes = await reaction_repo.counts(video_id)
-    return ReactionOut(likes=likes, dislikes=dislikes)
+    my_reaction = await reaction_repo.get(user.id, video_id)
+    return ReactionOut(likes=likes, dislikes=dislikes, my_reaction=my_reaction)
+
+
+@router.get("/{video_id}/reactions", response_model=ReactionOut)
+async def get_reactions(
+    video_id: uuid.UUID,
+    user: User | None = Depends(_optional_user),
+    repo=Depends(get_video_repo),
+    reaction_repo=Depends(get_reaction_repo),
+    acl=Depends(get_acl),
+) -> ReactionOut:
+    """F3: counters + caller's own reaction (null for guests)."""
+    from app.services import access
+
+    video = await repo.get(video_id)
+    if video is None or not await access.can_view_with_acl(video, user, acl):
+        raise HTTPException(404, "not found")
+    likes, dislikes = await reaction_repo.counts(video_id)
+    my_reaction = await reaction_repo.get(user.id, video_id) if user is not None else None
+    return ReactionOut(likes=likes, dislikes=dislikes, my_reaction=my_reaction)
 
 
 @router.post(
@@ -413,6 +436,7 @@ async def add_comment(
     comment_repo=Depends(get_comment_repo),
     acl=Depends(get_acl),
 ) -> CommentOut:
+    # user object carries the author name, no extra lookup needed here
     from app.services import access, interactions
 
     video = await repo.get(video_id)
@@ -427,7 +451,10 @@ async def add_comment(
     except ValueError:
         # SqlCommentRepo rejects a missing or nested parent with ValueError.
         raise HTTPException(422, "invalid parent_id") from None
-    return CommentOut(id=comment.id, text=comment.text, parent_id=comment.parent_id)
+    return CommentOut(
+        id=comment.id, text=comment.text, parent_id=comment.parent_id,
+        user_id=user.id, channel_name=user.channel_name,
+    )
 
 
 @router.get("/{video_id}/comments", response_model=CommentList)
@@ -438,6 +465,7 @@ async def list_comments(
     repo=Depends(get_video_repo),
     comment_repo=Depends(get_comment_repo),
     acl=Depends(get_acl),
+    user_repo=Depends(get_user_repo),  # F3: resolve comment authors in bulk
     user: User | None = Depends(_optional_user),
 ) -> CommentList:
     from app.services import access
@@ -446,8 +474,15 @@ async def list_comments(
     if video is None or not await access.can_view_with_acl(video, user, acl):
         raise HTTPException(404, "not found")
     comments = await comment_repo.list_for_video(video_id, limit=limit, offset=offset)
+    author_ids = {c.user_id for c in comments if getattr(c, "user_id", None) is not None}
+    authors = {u.id: u for u in await user_repo.get_by_ids(author_ids)} if author_ids else {}
     return CommentList(items=[
-        CommentOut(id=c.id, text=c.text, parent_id=c.parent_id) for c in comments
+        CommentOut(
+            id=c.id, text=c.text, parent_id=c.parent_id,
+            user_id=getattr(c, "user_id", None),
+            channel_name=authors[c.user_id].channel_name if getattr(c, "user_id", None) in authors else None,
+        )
+        for c in comments
     ])
 
 

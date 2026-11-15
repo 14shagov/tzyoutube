@@ -23,6 +23,7 @@ EXPECTED_ROUTES = {
     ("GET", "/api/videos/{video_id}"),
     ("POST", "/api/videos/{video_id}/view"),
     ("POST", "/api/videos/{video_id}/reactions"),
+    ("GET", "/api/videos/{video_id}/reactions"),  # F3: my_reaction for the watch page
     ("POST", "/api/videos/{video_id}/comments"),
     ("GET", "/api/videos/{video_id}/comments"),
     # upload + management (FR-6, 3C, 3F)

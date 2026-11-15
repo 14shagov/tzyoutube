@@ -17,6 +17,7 @@ from app.api import auth as auth_api
 from app.api import videos as videos_api
 from app.api.videos import CommentIn, CommentOut
 from app.main import create_app
+from app.services.fakes import FakeUserRepo
 
 
 def test_comment_out_accepts_uuid_id() -> None:
@@ -105,6 +106,7 @@ def _client(comment_repo=None):
     app.dependency_overrides[videos_api.get_storage] = lambda: FakeStorage()
     app.dependency_overrides[videos_api.get_acl] = lambda: FakeAclRepo()
     app.dependency_overrides[auth_api.get_current_user] = lambda: FakeUser()
+    app.dependency_overrides[auth_api.get_user_repo] = lambda: FakeUserRepo()
     return app, video, comment_repo
 
 

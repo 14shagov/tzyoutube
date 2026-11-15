@@ -86,6 +86,9 @@ class FakeUserRepo:
     async def get_by_id(self, user_id: uuid.UUID) -> User | None:
         return self.users.get(user_id)
 
+    async def get_by_ids(self, ids) -> list:
+        return [self.users[i] for i in ids if i in self.users]
+
     async def update_user(self, user: User) -> User:
         self.users[user.id] = user
         return user

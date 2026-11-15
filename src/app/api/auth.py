@@ -4,6 +4,7 @@ Maps domain errors from app.services.auth to HTTP responses; owns cookies.
 """
 
 import uuid
+from collections.abc import Iterable
 from datetime import datetime, timedelta
 from typing import Annotated
 
@@ -77,6 +78,15 @@ class SqlUserRepo:
 
     async def get_by_id(self, user_id: uuid.UUID) -> User | None:
         return await self._session.get(User, user_id)
+
+    async def get_by_ids(self, ids: Iterable[uuid.UUID]) -> list[User]:
+        """F3: bulk author lookup for comments (one query instead of N)."""
+        ids = list(ids)
+        if not ids:
+            return []
+        stmt = select(User).where(User.id.in_(ids))
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
 
     async def update_user(self, user: User) -> User:
         """3E admin actions: role change / block. Role is re-read from the

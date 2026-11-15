@@ -11,14 +11,7 @@ Red before implementation.
 import uuid
 from types import SimpleNamespace
 
-import pytest
 from fastapi.testclient import TestClient
-
-from app.api import auth as auth_api
-from app.api import channels as channels_api
-from app.api import videos as videos_api
-from app.main import create_app
-from app.services.fakes import FakeUserRepo
 from test_viewing_api import (
     FakeAclRepo,
     FakeCommentRepo,
@@ -30,6 +23,12 @@ from test_viewing_api import (
     FakeViewRepo,
     _video,
 )
+
+from app.api import auth as auth_api
+from app.api import channels as channels_api
+from app.api import videos as videos_api
+from app.main import create_app
+from app.services.fakes import FakeUserRepo
 
 
 class FakeChannelRepo:
@@ -100,7 +99,7 @@ def test_set_reaction_response_includes_my_reaction() -> None:
 def test_get_reactions_returns_counts_and_my_reaction() -> None:
     v = _video()
     user = FakeUser()
-    c, _, reaction_repo = _app([v], user=user, reactions={(user.id, v.id): -1})
+    c, _, _reaction_repo = _app([v], user=user, reactions={(user.id, v.id): -1})
     r = c.get(f"/api/videos/{v.id}/reactions")
     assert r.status_code == 200
     body = r.json()
@@ -162,8 +161,6 @@ def test_watch_page_guest_200_full_layout() -> None:
     assert "<video" in body and "controls" in body
     assert f'data-video-id="{v.id}"' in body
     assert "Big Buck" in body
-    assert "play_url" not in body or True
-    assert "https://" not in body.split("<video")[1].split("</video>")[0] or True
     # like/dislike segmented control + counts + my state marker
     assert 'id="like-btn"' in body and 'id="dislike-btn"' in body
     assert 'data-my-reaction' in body

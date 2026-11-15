@@ -5,6 +5,7 @@ protocol and raise domain errors; the API layer maps them to responses.
 """
 
 import uuid
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Protocol
@@ -74,6 +75,9 @@ class UserRepo(Protocol):
     async def get_by_email(self, email: str) -> User | None: ...
 
     async def get_by_channel_name(self, name: str) -> User | None: ...
+
+    async def get_by_ids(self, ids: Iterable[uuid.UUID]) -> list[User]:
+        """Bulk fetch (F3: comment authors on the watch page)."""
 
     async def create_user(self, email: str, password_hash: str, channel_name: str) -> User: ...
 

@@ -9,15 +9,18 @@ on*= handlers (CSP script-src 'self'), all JS in /static/*.js, Jinja
 autoescape on and NO |safe for user data anywhere.
 """
 
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.api import auth as auth_api
+from app.api import channels as channels_api
 from app.api import videos as videos_api
+from app.core.storage import BUCKETS
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -206,4 +209,99 @@ async def search_page(
         "chips": [],
         "empty_title": "Ничего не найдено",
         "empty_sub": "Попробуйте изменить запрос.",
+    })
+
+
+# --- F3: watch page ------------------------------------------------------------
+
+
+@router.get("/watch/{video_id}", response_class=HTMLResponse, include_in_schema=False)
+async def watch_page(
+    request: Request,
+    video_id: uuid.UUID,
+    user=Depends(videos_api._optional_user),
+    video_repo=Depends(videos_api.get_video_repo),
+    feed_repo=Depends(videos_api.get_feed_repo),
+    reaction_repo=Depends(videos_api.get_reaction_repo),
+    comment_repo=Depends(videos_api.get_comment_repo),
+    acl=Depends(videos_api.get_acl),
+    storage=Depends(videos_api.get_storage),
+    user_repo=Depends(auth_api.get_user_repo),
+    channel_repo=Depends(channels_api.get_channel_repo),
+    sub_repo=Depends(channels_api.get_subscription_repo),
+):
+    """F3: two-column watch page. Existence is hidden (404) for anyone who
+    cannot view — same policy as the JSON card."""
+    from app.services import access
+
+    video = await video_repo.get(video_id)
+    if video is None or video.status == "deleted" or not await access.can_view_with_acl(
+        video, user, acl
+    ):
+        raise HTTPException(404, "not found")
+
+    play_url = await access.view_or_none(storage, video, user, acl)
+    owner = await user_repo.get_by_id(video.user_id)
+    likes, dislikes = await reaction_repo.counts(video_id)
+    my_reaction = await reaction_repo.get(user.id, video_id) if user is not None else None
+    comments = await comment_repo.list_for_video(video_id, limit=100, offset=0)
+    author_ids = {c.user_id for c in comments if getattr(c, "user_id", None) is not None}
+    authors = {u.id: u for u in await user_repo.get_by_ids(author_ids)} if author_ids else {}
+    comment_rows = [
+        {
+            "id": c.id,
+            "text": c.text,
+            "parent_id": getattr(c, "parent_id", None),
+            "author": authors[getattr(c, "user_id", None)].channel_name
+            if getattr(c, "user_id", None) in authors else "—",
+            "date": time_ago(getattr(c, "created_at", None)),
+        }
+        for c in comments
+    ]
+    top_comments = [c for c in comment_rows if c["parent_id"] is None]
+    replies = [c for c in comment_rows if c["parent_id"] is not None]
+    subscribed = await sub_repo.is_subscribed(user.id, video.user_id) if user is not None else False
+    sub_count = await channel_repo.subscriber_count(video.user_id)
+    views = int(getattr(video, "view_count", 0) or 0)
+
+    rec_videos = await feed_repo.public_feed(limit=24, offset=0)
+    recs = await _feed_cards([v for v in rec_videos if v.id != video_id][:12], user_repo)
+
+    # Thumbnail: public videos via nginx /media/, private via presigned URL
+    # (response-content-type forces image/jpeg — covers legacy objects).
+    thumb_key = getattr(video, "thumbnail_key", None)
+    if thumb_key and not getattr(video, "is_private", False):
+        thumb_url = f"/media/{thumb_key}"
+    elif thumb_key:
+        thumb_url = storage.presigned_get(  # sync: minio signs locally, no network
+            BUCKETS["thumbnails"], thumb_key,
+            response_headers={"response-content-type": "image/jpeg"},
+            private=True,
+        )
+    else:
+        thumb_url = None
+
+    return templates.TemplateResponse(request, "watch.html", {
+        "request": request,
+        "user": _public_user(user),
+        "page": "watch",
+        "brand": BRAND,
+        "video": video,
+        "play_url": play_url,
+        "thumb_url": thumb_url,
+        "owner_name": owner.channel_name if owner is not None else "—",
+        "owner_id": video.user_id,
+        "is_owner": user is not None and user.id == video.user_id,
+        "likes": likes,
+        "dislikes": dislikes,
+        "my_reaction": my_reaction,
+        "views_label": f"{views} {plural(views, 'просмотр', 'просмотра', 'просмотров')}",
+        "date": time_ago(getattr(video, "created_at", None)),
+        "subscribed": subscribed,
+        "sub_count": sub_count,
+        "sub_label": f"{sub_count} {plural(sub_count, 'подписчик', 'подписчика', 'подписчиков')}",
+        "comments": top_comments,
+        "replies": {r["parent_id"]: r for r in replies},
+        "comment_count": len(comment_rows),
+        "recs": recs,
     })

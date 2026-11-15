@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}{{ video.title }}{% endblock %}
+{% block content %}
+<div class="watch" data-video-id="{{ video.id }}" data-my-reaction="{{ my_reaction if my_reaction is not none else '' }}" data-subscribed="{{ '1' if subscribed else '' }}" data-is-owner="{{ '1' if is_owner else '' }}">
+  <section class="watch-main">
+    <div class="player">
+      {% if play_url %}
+      <video id="player" controls preload="metadata" poster="{{ thumb_url | default('', true) }}" src="{{ play_url }}"></video>
+      {% elif video.status != 'ready' %}
+      <div class="player-stub">Видео обрабатывается…{% if video.failure_reason %} Ошибка: {{ video.failure_reason }}{% endif %}</div>
+      {% else %}
+      <div class="player-stub">Плеер недоступен</div>
+      {% endif %}
+    </div>
+
+    <h1 class="watch-title">{{ video.title }}</h1>
+
+    <div class="watch-actions">
+      <div class="channel-box">
+        <a class="avatar" href="/channel/{{ owner_id }}">{{ owner_name[:1] | upper }}</a>
+        <div class="channel-meta">
+          <a class="channel-name" href="/channel/{{ owner_id }}">{{ owner_name }}</a>
+          <span class="sub-count">{{ sub_label }}</span>
+        </div>
+        <button id="subscribe-btn" class="btn {% if subscribed %}ghost{% else %}primary{% endif %}" type="button">
+          {{ 'Вы подписаны' if subscribed else 'Подписаться' }}
+        </button>
+      </div>
+      <div class="actions-right">
+        <div class="segmented" role="group" aria-label="Оценка">
+          <button id="like-btn" class="seg {% if my_reaction == 1 %}active{% endif %}" type="button" aria-label="Нравится">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="{% if my_reaction == 1 %}currentColor{% else %}none{% endif %}" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M7 10v11H4a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h3zm0 0 4.2-7.1a2 2 0 0 1 3.8 1.1L14 9h6a2 2 0 0 1 2 2.3l-1.2 7A2 2 0 0 1 18.8 20H7"/></svg>
+            <span id="like-count">{{ likes }}</span>
+          </button>
+          <button id="dislike-btn" class="seg {% if my_reaction == -1 %}active{% endif %}" type="button" aria-label="Не нравится">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="{% if my_reaction == -1 %}currentColor{% else %}none{% endif %}" stroke="currentColor" stroke-width="2" stroke-linejoin="round" style="transform:rotate(180deg)"><path d="M7 10v11H4a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h3zm0 0 4.2-7.1a2 2 0 0 1 3.8 1.1L14 9h6a2 2 0 0 1 2 2.3l-1.2 7A2 2 0 0 1 18.8 20H7"/></svg>
+            <span id="dislike-count">{{ dislikes }}</span>
+          </button>
+        </div>
+        {% if user and not is_owner %}
+        <form id="report-form" class="report" method="post" action="/api/videos/{{ video.id }}/report">
+          <select name="reason" aria-label="Причина жалобы">
+            <option value="spam">Спам</option><option value="scam">Мошенничество</option>
+            <option value="violence">Насилие</option><option value="hate">Ненависть</option>
+            <option value="sexual">Сексуальный контент</option><option value="misleading">Вводит в заблуждение</option>
+            <option value="copyright">Нарушение авторских прав</option><option value="other">Другое</option>
+          </select>
+          <button class="btn ghost" type="submit">Пожаловаться</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="watch-desc">
+      <div class="desc-meta">{{ views_label }} · {{ date }}{% if video.is_private %} · <span class="badge">Приватное</span>{% endif %}{% if video.status == 'hidden' %} · <span class="badge">Скрыто модерацией</span>{% endif %}</div>
+      <p class="desc-text">{{ video.description }}</p>
+    </div>
+
+    <section class="comments" id="comments" aria-label="Комментарии">
+      <h2>{{ comment_count }} {{ comment_count | plural('комментарий', 'комментария', 'комментариев') }}</h2>
+      {% if user %}
+      <form id="comment-form" class="comment-form" method="post" action="/api/videos/{{ video.id }}/comments">
+        <input type="text" name="text" maxlength="2000" placeholder="Добавить комментарий…" required aria-label="Текст комментария">
+        <button class="btn primary" type="submit">Отправить</button>
+      </form>
+      {% else %}
+      <p class="muted"><a href="/login?next=/watch/{{ video.id }}">Войдите</a>, чтобы комментировать.</p>
+      {% endif %}
+      <ul id="comment-list" class="comment-list">
+        {% for c in comments %}
+        <li class="comment" data-comment-id="{{ c.id }}">
+          <span class="avatar sm">{{ c.author[:1] | upper }}</span>
+          <div class="comment-body">
+            <div class="comment-head"><span class="comment-author">{{ c.author }}</span> <span class="muted">{{ c.date }}</span></div>
+            <p class="comment-text">{{ c.text }}</p>
+            {% if user %}<button class="btn ghost sm reply-btn" type="button" data-parent="{{ c.id }}">Ответить</button>{% endif %}
+            {% set reply = replies.get(c.id) %}
+            {% if reply %}
+            <div class="comment reply">
+              <span class="avatar sm">{{ reply.author[:1] | upper }}</span>
+              <div class="comment-body">
+                <div class="comment-head"><span class="comment-author">{{ reply.author }}</span> <span class="muted">{{ reply.date }}</span></div>
+                <p class="comment-text">{{ reply.text }}</p>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+  </section>
+
+  <aside class="recs" aria-label="Рекомендации">
+    {% for card in recs %}
+    <a class="rec" href="/watch/{{ card.id }}">
+      <span class="rec-thumb">{% if card.thumb %}<img src="{{ card.thumb }}" alt="" loading="lazy">{% endif %}<span class="dur">{{ card.duration }}</span></span>
+      <span class="rec-meta">
+        <span class="rec-title">{{ card.title }}</span>
+        <span class="rec-channel">{{ card.channel_name }}</span>
+        <span class="rec-sub">{{ card.views_label }} · {{ card.date }}</span>
+      </span>
+    </a>
+    {% else %}
+    <p class="muted">Нет рекомендаций.</p>
+    {% endfor %}
+  </aside>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/watch.js"></script>{% endblock %}
