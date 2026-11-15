@@ -9,6 +9,7 @@ import re
 import secrets
 import tempfile
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -25,7 +26,8 @@ from fastapi import (
     UploadFile,
 )
 from fastapi import status as http_status
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import SqlUserRepo, get_current_user, get_user_repo
@@ -95,6 +97,24 @@ class SqlVideoRepo:
 
     async def get(self, video_id: uuid.UUID) -> Video | None:
         return await self._session.get(Video, video_id)
+
+    async def update(self, video: Video) -> Video:
+        self._session.add(video)
+        await self._session.commit()
+        await self._session.refresh(video)
+        return video
+
+    async def list_user_videos(self, user_id: uuid.UUID, *, limit: int, offset: int):
+        """Owner's own videos incl. private/failed — deleted ones are gone (FR-10)."""
+        stmt = (
+            select(Video)
+            .where(Video.user_id == user_id, Video.status != "deleted")
+            .order_by(Video.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
 
 
 async def get_video_repo(
@@ -244,6 +264,40 @@ async def search(
         FeedItem(
             id=v.id, title=v.title, thumbnail_url=_thumb_url(v),
             duration_seconds=v.duration_seconds, view_count=v.view_count,
+        )
+        for v in videos
+    ])
+
+
+class MyVideoItem(BaseModel):
+    id: uuid.UUID
+    title: str
+    status: str
+    is_private: bool
+    failure_reason: str | None = None
+    view_count: int
+    duration_seconds: int
+    created_at: datetime
+
+
+class MyVideosOut(BaseModel):
+    items: list[MyVideoItem]
+
+
+@feed_router.get("/me/videos", response_model=MyVideosOut)
+async def my_videos(
+    limit: Annotated[int, Query(ge=0, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    user: User = Depends(get_current_user),
+    repo: SqlVideoRepo = Depends(get_video_repo),
+) -> MyVideosOut:
+    """FR-9/FR-10: my videos incl. private, with processing status + failure_reason."""
+    videos = await repo.list_user_videos(user.id, limit=limit, offset=offset)
+    return MyVideosOut(items=[
+        MyVideoItem(
+            id=v.id, title=v.title, status=v.status, is_private=v.is_private,
+            failure_reason=v.failure_reason, view_count=v.view_count,
+            duration_seconds=v.duration_seconds, created_at=v.created_at,
         )
         for v in videos
     ])
@@ -462,6 +516,139 @@ async def upload_video(
         )
     finally:
         Path(tmp_path).unlink(missing_ok=True)
+
+
+# --- Stage 3C: video management + ACL whitelist (FR-9, FR-10) ----------------
+
+
+class VideoPatchIn(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=5000)
+    is_private: bool | None = None
+
+
+class VideoManageOut(BaseModel):
+    id: uuid.UUID
+    title: str
+    description: str
+    status: str
+    is_private: bool
+    failure_reason: str | None = None
+
+
+class AclAddIn(BaseModel):
+    email: EmailStr
+
+
+class AclEntryOut(BaseModel):
+    user_id: uuid.UUID
+    email: str
+    channel_name: str
+
+
+class AclListOut(BaseModel):
+    items: list[AclEntryOut]
+
+
+async def _owned_video(video_id: uuid.UUID, user: User, repo: SqlVideoRepo) -> Video:
+    video = await repo.get(video_id)
+    if video is None or video.status == "deleted":
+        raise HTTPException(404, "not found")
+    if video.user_id != user.id:
+        raise HTTPException(403, "owner only")
+    return video
+
+
+@router.patch("/{video_id}", response_model=VideoManageOut)
+async def patch_video(
+    video_id: uuid.UUID,
+    payload: VideoPatchIn,
+    user: User = Depends(get_current_user),
+    repo: SqlVideoRepo = Depends(get_video_repo),
+) -> VideoManageOut:
+    video = await _owned_video(video_id, user, repo)
+    if payload.title is not None:
+        title = payload.title.strip()
+        if not title:
+            raise HTTPException(422, "title must not be blank")
+        video.title = title
+    if payload.description is not None:
+        video.description = payload.description
+    if payload.is_private is not None:
+        video.is_private = payload.is_private
+    video = await repo.update(video)
+    return VideoManageOut(
+        id=video.id, title=video.title, description=video.description,
+        status=video.status, is_private=video.is_private,
+        failure_reason=video.failure_reason,
+    )
+
+
+@router.delete("/{video_id}", status_code=http_status.HTTP_204_NO_CONTENT)
+async def delete_video(
+    video_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    repo: SqlVideoRepo = Depends(get_video_repo),
+    queue=Depends(get_queue),
+) -> None:
+    """FR-10: soft delete — the row is marked deleted and the worker job
+    removes the S3 objects and then the row itself."""
+    from app.services import access
+
+    video = await repo.get(video_id)
+    if video is None or video.status == "deleted":
+        raise HTTPException(404, "not found")
+    if video.user_id != user.id and user.role not in access.STAFF_ROLES:
+        raise HTTPException(403, "owner or staff only")
+    video.status = "deleted"
+    await repo.update(video)
+    await queue.enqueue_delete(video.id)
+
+
+@router.get("/{video_id}/acl", response_model=AclListOut)
+async def list_acl(
+    video_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    repo: SqlVideoRepo = Depends(get_video_repo),
+    acl=Depends(get_acl),
+) -> AclListOut:
+    await _owned_video(video_id, user, repo)
+    entries = await acl.list_entries(video_id)
+    return AclListOut(items=[
+        AclEntryOut(user_id=u.id, email=u.email, channel_name=u.channel_name)
+        for u in entries
+    ])
+
+
+@router.post("/{video_id}/acl", status_code=http_status.HTTP_204_NO_CONTENT)
+async def add_acl(
+    video_id: uuid.UUID,
+    payload: AclAddIn,
+    user: User = Depends(get_current_user),
+    repo: SqlVideoRepo = Depends(get_video_repo),
+    acl=Depends(get_acl),
+    user_repo=Depends(get_user_repo),
+) -> None:
+    """Grant a user access to a private video, by email; idempotent (FR-9)."""
+    await _owned_video(video_id, user, repo)
+    target = await user_repo.get_by_email(payload.email)
+    if target is None:
+        raise HTTPException(404, "user not found")
+    if target.id == user.id:
+        raise HTTPException(422, "cannot add yourself to the ACL")
+    await acl.add(video_id, target.id)
+
+
+@router.delete("/{video_id}/acl/{user_id}", status_code=http_status.HTTP_204_NO_CONTENT)
+async def remove_acl(
+    video_id: uuid.UUID,
+    user_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    repo: SqlVideoRepo = Depends(get_video_repo),
+    acl=Depends(get_acl),
+) -> None:
+    await _owned_video(video_id, user, repo)
+    await acl.remove(video_id, user_id)
 
 
 class _Seekable:

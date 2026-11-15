@@ -116,6 +116,8 @@ class TranscodeQueue(Protocol):
 
     async def enqueue_transcode(self, video_id: uuid.UUID) -> None: ...
 
+    async def enqueue_delete(self, video_id: uuid.UUID) -> None: ...
+
 
 def build_raw_key(video_id: uuid.UUID, ext: str) -> str:
     return f"raw/{video_id}.{ext}"

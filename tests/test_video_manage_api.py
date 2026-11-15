@@ -12,12 +12,12 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
+from test_channels_api import _user
 
 from app.api import videos as videos_api
 from app.api.auth import get_current_user, get_user_repo
 from app.main import create_app
 from app.models import User, Video
-from test_channels_api import _user
 
 
 def _video(owner_id, title="v", status="ready", is_private=False, failure_reason=None) -> Video:
@@ -337,9 +337,8 @@ def test_acl_remove_non_owner_403() -> None:
 
 
 def test_delete_video_task_enqueued_and_registered() -> None:
-    from worker import main as worker_main
-
     from app.worker import queue as queue_mod
+    from worker import main as worker_main
 
     enqueued = set(re.findall(r'enqueue_job\(\s*"([a-z_]+)"', inspect.getsource(queue_mod)))
     registered = {f.__name__ for f in worker_main.WorkerSettings.functions}

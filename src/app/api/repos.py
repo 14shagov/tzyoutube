@@ -303,3 +303,29 @@ class SqlAclRepo:
         )
         result = await self.session.execute(stmt)
         return result.scalar_one() > 0
+
+    async def add(self, video_id, user_id) -> None:
+        """Idempotent whitelist grant (FR-9)."""
+        if not await self.is_allowed(video_id, user_id):
+            self.session.add(VideoAcl(video_id=video_id, user_id=user_id))
+            await self.session.commit()
+
+    async def remove(self, video_id, user_id) -> None:
+        """Idempotent whitelist revoke (FR-9)."""
+        await self.session.execute(
+            delete(VideoAcl).where(
+                VideoAcl.video_id == video_id, VideoAcl.user_id == user_id
+            )
+        )
+        await self.session.commit()
+
+    async def list_entries(self, video_id):
+        """Whitelisted users of a video, for the owner's ACL management UI."""
+        stmt = (
+            select(User)
+            .join(VideoAcl, VideoAcl.user_id == User.id)
+            .where(VideoAcl.video_id == video_id)
+            .order_by(User.channel_name)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())

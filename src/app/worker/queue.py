@@ -32,6 +32,11 @@ class ArqTranscodeQueue:
         pool = await self._get_pool()
         await pool.enqueue_job("transcode", str(video_id))
 
+    async def enqueue_delete(self, video_id: uuid.UUID) -> None:
+        """FR-10: soft-delete cleanup job — worker removes S3 objects, then the row."""
+        pool = await self._get_pool()
+        await pool.enqueue_job("delete_video", str(video_id))
+
     async def aclose(self) -> None:
         """Close the arq pool if this instance holds a live one."""
         if self._pool is not None:

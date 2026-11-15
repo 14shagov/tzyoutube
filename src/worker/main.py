@@ -17,7 +17,7 @@ import uuid
 from typing import ClassVar
 
 from arq.connections import RedisSettings
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
@@ -66,6 +66,14 @@ class _TaskRepo:
 
         _db_call(_update)
 
+    def delete_video(self, video_id: uuid.UUID) -> None:
+        """Hard-delete the row — only after the objects are gone (FR-10)."""
+        async def _delete(session):
+            await session.execute(delete(Video).where(Video.id == video_id))
+            await session.commit()
+
+        _db_call(_delete)
+
 
 class _TaskStorage:
     """Sync TranscodeStorage over the minio-py client (Silo)."""
@@ -84,6 +92,9 @@ class _TaskStorage:
         if content_type is not None:
             kwargs["content_type"] = content_type
         self._client.fput_object(bucket, key, path, **kwargs)
+
+    def delete(self, bucket: str, key: str) -> None:
+        self._client.remove_object(bucket, key)
 
 
 async def _ffmpeg_runner(args: list[str]) -> tuple[bool, str]:
@@ -147,10 +158,21 @@ async def transcode(ctx: dict, video_id: str) -> None:
     )
 
 
+def _delete_video_sync(video_id: uuid.UUID) -> None:
+    from app.services.cleanup import delete_video_objects
+
+    delete_video_objects(_TaskRepo(), _TaskStorage(), video_id)
+
+
+async def delete_video(ctx: dict, video_id: str) -> None:
+    """FR-10 cleanup job: S3 objects removed with retries, then the DB row."""
+    await asyncio.to_thread(_delete_video_sync, uuid.UUID(video_id))
+
+
 class WorkerSettings:
     """arq worker settings (queue name defaults to arq)."""
 
-    functions: ClassVar[list] = [transcode]
+    functions: ClassVar[list] = [transcode, delete_video]
     on_startup = None
     on_shutdown = None
     # C2: arq's default job_timeout (300s) is shorter than one ffmpeg run
