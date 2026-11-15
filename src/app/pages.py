@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.api import auth as auth_api
@@ -120,6 +120,44 @@ async def _feed_cards(videos, user_repo) -> list[dict]:
             "date": time_ago(getattr(v, "created_at", None)),
         })
     return cards
+
+
+# --- F2: login / register ------------------------------------------------------
+
+
+def _safe_next(next_url: str) -> str:
+    """Only same-site absolute paths are allowed as redirect targets."""
+    if next_url and next_url.startswith("/") and not next_url.startswith("//"):
+        return next_url
+    return "/"
+
+
+@router.get("/login", response_class=HTMLResponse, include_in_schema=False)
+async def login_page(
+    request: Request,
+    next: str = "/",
+    user=Depends(videos_api._optional_user),
+):
+    if user is not None:
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse(request, "auth.html", {
+        "request": request, "user": None, "page": "auth", "brand": BRAND,
+        "mode": "login", "next": _safe_next(next),
+    })
+
+
+@router.get("/register", response_class=HTMLResponse, include_in_schema=False)
+async def register_page(
+    request: Request,
+    next: str = "/",
+    user=Depends(videos_api._optional_user),
+):
+    if user is not None:
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse(request, "auth.html", {
+        "request": request, "user": None, "page": "auth", "brand": BRAND,
+        "mode": "register", "next": _safe_next(next),
+    })
 
 
 # --- F1: home + search ---------------------------------------------------------

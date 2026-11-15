@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == 'register' %}Регистрация{% else %}Вход{% endif %}{% endblock %}
+{% block content %}
+<div class="auth-wrap">
+  {% if mode == 'register' %}
+  <h1>Создать аккаунт</h1>
+  <p class="auth-sub">Канал появится сразу после регистрации.</p>
+  <form id="register-form" method="post" novalidate>
+    <input type="hidden" name="next" value="{{ next | default('', true) }}">
+    <label>Email
+      <input type="email" name="email" required maxlength="254" autocomplete="email">
+    </label>
+    <label>Пароль (8–128 символов)
+      <input type="password" name="password" required minlength="8" maxlength="128" autocomplete="new-password">
+    </label>
+    <label>Имя канала (1–100 символов)
+      <input type="text" name="channel_name" required minlength="1" maxlength="100" autocomplete="off">
+    </label>
+    <div class="auth-error" id="auth-error" hidden></div>
+    <button class="btn primary" type="submit">Зарегистрироваться</button>
+  </form>
+  <p class="auth-switch">Уже есть аккаунт? <a href="/login{% if next %}?next={{ next }}{% endif %}">Войти</a></p>
+  {% else %}
+  <h1>Вход</h1>
+  <p class="auth-sub">Войдите, чтобы загружать видео, лайкать и комментировать.</p>
+  <form id="login-form" method="post" novalidate>
+    <input type="hidden" name="next" value="{{ next | default('', true) }}">
+    <label>Email
+      <input type="email" name="email" required autocomplete="email">
+    </label>
+    <label>Пароль
+      <input type="password" name="password" required autocomplete="current-password">
+    </label>
+    <div class="auth-error" id="auth-error" hidden></div>
+    <button class="btn primary" type="submit">Войти</button>
+  </form>
+  <p class="auth-switch">Нет аккаунта? <a href="/register{% if next %}?next={{ next }}{% endif %}">Зарегистрироваться</a></p>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/auth.js"></script>{% endblock %}
