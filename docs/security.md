@@ -110,6 +110,33 @@
 - Контейнер приложения не запускается от root: системный пользователь `app`,
   `USER app` после сборки; единственный опубликованный порт — nginx.
 
+### 2.11 Матрица прав API (этап 3–4, группы 3A–3E)
+
+Роль и блокировка читаются из БД на каждом запросе (сессия не кэширует) —
+смена роли/блокировка админом действует сразу, без пересоздания сессии (T7).
+
+| Группа эндпоинтов | guest | user | владелец | moderator | admin |
+|---|---|---|---|---|---|
+| GET /api/channels/{id}, /videos, /playlists | 200 (публичное) | 200 | 200 (видит приватное) | 200 | 200 |
+| PATCH /api/channels/{id} | 401 | 403 | 200 | 403 | 403 |
+| POST/DELETE /api/channels/{id}/subscribe | 401 | 204 (self → 422) | 204/422 | 204 | 204 |
+| GET /api/subscriptions, /api/feed/subscriptions | 401 | 200 | 200 | 200 | 200 |
+| PATCH/DELETE /api/videos/{id}, ACL CRUD | 401 | 403 | 200/204 | DELETE 204, PATCH 403 | DELETE 204, PATCH 403 |
+| GET /api/me/videos, GET /api/videos/{id}/status | 401 | 200 (своё) | 200 | 200 (любое не-deleted) | 200 |
+| Плейлисты CRUD + items | 401 | 403 чужие | 200/201/204 | 403 чужие | 403 чужие |
+| GET /api/playlists/{id} приватного | 404 | 404 | 200 | 404 | 404 |
+| POST /api/videos/{id}/report | 401 | 201 (повтор → 409) | 201 | 201 | 201 |
+| GET /api/mod/reports, POST /api/mod/reports/{id}/resolve | 401 | 403 | 403 | 200/201 | 200/201 |
+| PATCH /api/admin/users/{user_id} | 401 | 403 | 403 | 403 | 200 (self → 422) |
+
+- Скрытое (hidden) видео: нет в ленте/поиске/канале (фильтр `status='ready'`),
+  карточка и play_url — только владельцу и staff; остальным 404.
+- Приватное видео: владелец + staff + записи `video_acl`; остальным 404.
+- Все права покрыты тестами матрицей ролей: `tests/test_moderation_api.py`,
+  `tests/test_video_manage_api.py`, `tests/test_playlists_api.py`,
+  `tests/test_channels_api.py`, `tests/test_subscriptions_api.py`,
+  `tests/test_access_unit.py`, `tests/test_video_status_api.py`.
+
 ## 3. Что осознанно не делаем (и почему)
 
 | Мера | Почему отложена |

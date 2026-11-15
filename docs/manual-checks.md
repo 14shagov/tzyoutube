@@ -25,7 +25,8 @@ docker compose down -v        # чистый старт (удалит данны
 
 - Команда: `docker compose exec postgres psql -U tzyoutube -d tzyoutube -c "\dt"`
 - Ожидание: таблицы users, sessions, videos, video_views, reactions,
-  comments, video_acl и alembic_version.
+  comments, video_acl, subscriptions, playlists, playlist_items,
+  video_reports и alembic_version.
 - Прислать: вывод команды.
 
 ## 4. Swagger доступен
@@ -199,3 +200,53 @@ docker compose down -v        # чистый старт (удалит данны
   превью público: `curl.exe -s -D - -o NUL http://localhost/media/thumbnails/<uuid>.jpg`
   → `Content-Type: image/jpeg`, `Cache-Control: public, max-age=3600`, один nosniff.
 - Прислать: заголовки 206-ответа, заголовки превью, скрин/описание поведения браузера.
+
+## 17. Этап 3–4 API: каналы, подписки, управление видео, плейлисты, модерация (группы 3A–3F)
+
+- Предусловие: два пользователя user1/user2 (п.5), видео Demo в ready (п.14).
+- Команды (PowerShell; `-b cookies.txt` = user1, `-c c2.txt` + login user2 = второй):
+  ```
+  # 3A канал: карточка, видео канала, PATCH своего
+  curl.exe -i http://localhost/api/channels/<user1_id>
+  curl.exe -i http://localhost/api/channels/<user1_id>/videos
+  curl.exe -i -b cookies.txt -X PATCH http://localhost/api/channels/<user1_id> -H "Origin: http://localhost" -H "Content-Type: application/json" --data-raw '{"description":"мой канал"}'
+  # 3B подписки: подписка/отписка идемпотентны, self → 422, ленты подписок
+  curl.exe -i -b c2.txt -X POST http://localhost/api/channels/<user1_id>/subscribe -H "Origin: http://localhost"
+  curl.exe -i -b c2.txt -X POST http://localhost/api/channels/<user1_id>/subscribe -H "Origin: http://localhost"   # повтор → 204
+  curl.exe -i -b c2.txt -X POST http://localhost/api/channels/<user2_id>/subscribe -H "Origin: http://localhost"   # self → 422
+  curl.exe -i -b c2.txt http://localhost/api/subscriptions
+  curl.exe -i -b c2.txt http://localhost/api/feed/subscriptions
+  # 3C управление: PATCH/DELETE, /me/videos, ACL по email, статус
+  curl.exe -i -b cookies.txt -X PATCH http://localhost/api/videos/<id> -H "Origin: http://localhost" -H "Content-Type: application/json" --data-raw '{"is_private":true,"title":"Demo private"}'
+  curl.exe -i -b cookies.txt http://localhost/api/me/videos
+  curl.exe -i -b cookies.txt -X POST http://localhost/api/videos/<id>/acl -H "Origin: http://localhost" -H "Content-Type: application/json" --data-raw '{"email":"user2@example.com"}'
+  curl.exe -i http://localhost/api/videos/<id>                                   # гость → 404 (приватное)
+  curl.exe -i -b c2.txt http://localhost/api/videos/<id>                         # ACL → 200 с play_url (TTL 900)
+  curl.exe -i -b cookies.txt http://localhost/api/videos/<id>/status
+  curl.exe -i -b cookies.txt -X DELETE http://localhost/api/videos/<id>/acl/<user2_id> -H "Origin: http://localhost"
+  # мягкое удаление: статус deleted, из ленты/поиска исчез, воркер чистит объекты
+  curl.exe -i -b cookies.txt -X DELETE http://localhost/api/videos/<id> -H "Origin: http://localhost"   # → 204
+  curl.exe -i http://localhost/api/feed                                            # видео нет
+  curl.exe -i -b cookies.txt http://localhost/api/videos/<id>                     # → 404
+  docker compose logs worker --tail 20                                            # delete_video: объекты удалены
+  # 3D плейлисты
+  curl.exe -i -b cookies.txt -X POST http://localhost/api/playlists -H "Origin: http://localhost" -H "Content-Type: application/json" --data-raw '{"title":"Избранное"}'
+  curl.exe -i -b cookies.txt -X POST http://localhost/api/playlists/<pl>/items -H "Origin: http://localhost" -H "Content-Type: application/json" --data-raw '{"video_id":"<id2>"}'
+  curl.exe -i http://localhost/api/playlists/<pl>
+  curl.exe -i http://localhost/api/channels/<user1_id>/playlists
+  # 3E модерация: жалоба, очередь, решение, админ
+  curl.exe -i -b c2.txt -X POST http://localhost/api/videos/<id2>/report -H "Origin: http://localhost" -H "Content-Type: application/json" --data-raw '{"reason":"spam","comment":"test"}'
+  curl.exe -i -b c2.txt -X POST http://localhost/api/videos/<id2>/report -H "Origin: http://localhost" -H "Content-Type: application/json" --data-raw '{"reason":"spam"}'   # повтор → 409
+  curl.exe -i -b c2.txt http://localhost/api/mod/reports                          # user → 403; нужен moderator (seed)
+  curl.exe -i -b mod.txt -X POST http://localhost/api/mod/reports/<rid>/resolve -H "Origin: http://localhost" -H "Content-Type: application/json" --data-raw '{"action":"hide","note":"spam"}'
+  curl.exe -i http://localhost/api/videos/<id2>                                   # скрытое: гость → 404
+  curl.exe -i -b cookies.txt http://localhost/api/videos/<id2>                    # владелец → 200
+  curl.exe -i -b admin.txt -X PATCH http://localhost/api/admin/users/<user2_id> -H "Origin: http://localhost" -H "Content-Type: application/json" --data-raw '{"is_blocked":true}'
+  curl.exe -i -X POST http://localhost/auth/login -H "Content-Type: application/json" --data-raw '{"email":"user2@example.com","password":"Password123"}'   # → 401
+  ```
+- Ожидание: статусы как в комментариях (200/201/204/401/403/404/409/422);
+  после DELETE видео — запись `status='deleted'`, объекты в silo удалены
+  (воркер `delete_video` в логах), из ленты/поиска/канала видео нет;
+  скрытое видео видно только владельцу/модератору; заблокированный user2
+  получает 401 на login и на /auth/me со старой сессией.
+- Прислать: ключевые статусы/тела + хвост логов worker.

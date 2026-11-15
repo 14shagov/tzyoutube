@@ -384,3 +384,74 @@
      .env.example, security.md 2.6, ADR-003, architecture.md.
 - Прогон: 299 passed, ruff чист. Ручная проверка — manual-checks.md п.16.
 - Дальше: ждём команду владельца.
+
+## Этап 3–4 API (группы 3A–3G по заданию владельца m01756) — сделано 2026-11-15
+
+По группе: красный тест отдельным коммитом ПЕРЕД фиксом; миграции —
+offline-стражами; ответы — Pydantic-моделями (страж `tests/test_openapi_routes.py`
+проверяет все маршруты из requirements.md по `app.openapi()` и отсутствие
+bare-dict тел). После всех групп: `uv run pytest -q` = **400 passed**,
+`uv run ruff check .` чист.
+
+- 3A каналы `ef0b3b5`(red) `2ece1d5`: модель `Subscription` + `users.channel_description`
+  (миграция `e1f2a3b4c5d6`), `src/app/api/channels.py`: GET /api/channels/{id}
+  (имя, описание, аватар-заглушка, счётчики, флаг своей подписки),
+  GET /{id}/videos (владельцу — все не-deleted, остальным — ready+публичные),
+  PATCH /{id} только владельца (403/409).
+- 3B подписки `c88f6e9`(red) `c682d3f`: POST/DELETE /api/channels/{id}/subscribe
+  (идемпотентно 204, self → 422, гость → 401), GET /api/subscriptions,
+  GET /api/feed/subscriptions.
+- 3C управление видео `350447e`(red) `ed2036f`: PATCH/DELETE /api/videos/{id}
+  (владелец; DELETE — ещё и staff), мягкое удаление + воркер-задача
+  `delete_video` (services/cleanup.py: чистит raw/videos/thumbnails с ретраями,
+  затем удаляет запись), GET /api/me/videos (все свои incl. приватные +
+  failure_reason), ACL: GET/POST/DELETE /api/videos/{id}/acl[/{user_id}] —
+  только владелец, добавление по email (404 чужой email / 422 self).
+- 3D плейлисты `07388f2`(red) `0ba0bf8`: миграция `f1a2b3c4d5e6`, модели
+  Playlist/PlaylistItem, `src/app/api/playlists.py`: CRUD + items
+  (позиция по умолчанию max+1, дубль → 409), GET /api/channels/{id}/playlists;
+  приватный плейлист видит только владелец (404 остальным).
+- 3E модерация `d7e8f8e`(red) `1645581`: миграция `b1c2d3e4f5a6`, модель
+  VideoReport (uq video+reporter, журнал resolved_by/at/note/resolution),
+  `src/app/api/moderation.py`: POST /api/videos/{id}/report (один раз → 409),
+  GET /api/mod/reports (moderator+admin, фильтр статуса),
+  POST /api/mod/reports/{id}/resolve (hide/unhide/dismiss; unhide только из
+  hidden), PATCH /api/admin/users/{user_id} (только admin, self → 422);
+  `access.can_view`: hidden видно владельцу и staff. Роли проверяются тестами
+  по матрице (guest 401 / user 403 / mod / admin). Демо-эндпоинт /admin/roles
+  удалён.
+- 3F статус `ac87a87`(red) `bbc5345`: GET /api/videos/{id}/status →
+  {id, status, failure_reason}; ready+публичное — всем, остальные состояния —
+  владельцу/staff/ACL, deleted/unknown — 404 всем.
+- 3G `71809a4`(red) `e5746a8`: страж OpenAPI (все маршруты есть, тела и ответы
+  типизированы — `set_reaction` переведён с `dict` на `ReactionIn{value:
+  Literal[1,-1,0]}`, /health получил модель HealthOut); доки: requirements
+  (статус + допущение 15), db-schema (ER и таблицы синхронизированы с моделями),
+  security (2.11 матрица прав), plan (этапы 3–4 API закрыты), manual-checks п.17.
+
+### Все маршруты по группам (3A–3G + существующие)
+
+- auth: POST /auth/register, POST /auth/login, POST /auth/logout, GET /auth/me
+- feed: GET /api/feed, GET /api/search, GET /api/feed/subscriptions (3B),
+  GET /api/subscriptions (3B), GET /api/me/videos (3C)
+- videos: GET/POST /api/videos, GET/PATCH/DELETE /api/videos/{id},
+  GET /api/videos/{id}/status (3F), POST /api/videos/{id}/view,
+  POST /api/videos/{id}/reactions, GET+POST /api/videos/{id}/comments,
+  GET+POST /api/videos/{id}/acl, DELETE /api/videos/{id}/acl/{user_id} (3C),
+  POST /api/videos/{id}/report (3E)
+- channels: GET/PATCH /api/channels/{id}, GET /api/channels/{id}/videos,
+  GET /api/channels/{id}/playlists (3D), POST/DELETE /api/channels/{id}/subscribe (3B)
+- playlists: POST /api/playlists, GET/PATCH/DELETE /api/playlists/{id},
+  POST /api/playlists/{id}/items, DELETE /api/playlists/{id}/items/{video_id} (3D)
+- moderation: GET /api/mod/reports, POST /api/mod/reports/{id}/resolve,
+  PATCH /api/admin/users/{user_id} (3E)
+- infra: GET /health
+
+### Ручные проверки после этапа 3–4 — manual-checks.md п.17 (ключевая:
+ подписки/канал → PATCH видео приватным → ACL-друг → 200 у него/404 у гостя →
+ report → resolve hide → 404 у гостя, 200 у владельца → DELETE → воркер чистит S3)
+
+### Дальше
+
+- Ждём команду владельца (UI этапов 3–4: страницы 3.5, 3.8, 4.2, 4.5; seed/deploy —
+  этап 5).
