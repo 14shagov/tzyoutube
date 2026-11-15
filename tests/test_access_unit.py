@@ -70,6 +70,19 @@ def test_hidden_and_deleted_and_processing_not_viewable() -> None:
         assert access.can_view(video, None) is False, status
 
 
+def test_hidden_video_visible_to_owner_and_staff_only() -> None:
+    # 3E: a moderator-hidden video stays accessible to its owner and staff
+    # (they must see it to unhide it); everyone else gets False -> 404.
+    video = _video(is_private=False, status="hidden")
+    owner = _user()
+    owner.id = video.user_id
+    assert access.can_view(video, owner) is True
+    assert access.can_view(video, _user(role="moderator")) is True
+    assert access.can_view(video, _user(role="admin")) is True
+    assert access.can_view(video, _user()) is False
+    assert access.can_view(video, None) is False
+
+
 @pytest.mark.asyncio
 async def test_acl_grants_access_to_stranger() -> None:
     video = _video(is_private=True)
