@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ channel.channel_name }}{% endblock %}
+{% block content %}
+<div class="channel-head"
+     data-channel-id="{{ channel.id }}"
+     data-subscribed="{{ 1 if channel.subscribed else 0 }}"
+     {% if channel.is_owner %}data-is-owner="1"{% endif %}>
+  <div class="avatar lg" aria-hidden="true">{{ channel.channel_name[:1] | upper }}</div>
+  <div class="channel-info">
+    <h1 class="channel-name">{{ channel.channel_name }}</h1>
+    <div class="channel-sub muted">{{ channel.sub_label }} · {{ channel.vid_label }}</div>
+    {% if channel.description %}<p class="channel-desc">{{ channel.description }}</p>{% endif %}
+    <div class="channel-actions">
+      {% if user and not channel.is_owner %}
+      <button id="subscribe-btn" class="btn{% if channel.subscribed %} subscribed{% endif %}" type="button">
+        {{ 'Вы подписаны' if channel.subscribed else 'Подписаться' }}
+      </button>
+      {% endif %}
+      {% if channel.is_owner %}
+      <button id="channel-edit-btn" class="btn" type="button">Редактировать канал</button>
+      {% endif %}
+    </div>
+    {% if channel.is_owner %}
+    <form id="channel-edit-form" class="edit-form" hidden>
+      <label>Название канала
+        <input type="text" name="channel_name" value="{{ channel.channel_name }}" maxlength="100" required>
+      </label>
+      <label>Описание
+        <textarea name="description" maxlength="5000" rows="3">{{ channel.description }}</textarea>
+      </label>
+      <div class="row-actions">
+        <button class="btn primary" type="submit">Сохранить</button>
+        <button class="btn ghost" type="button" id="channel-edit-cancel">Отмена</button>
+      </div>
+      <div class="form-error" id="channel-edit-error" hidden></div>
+    </form>
+    {% endif %}
+  </div>
+</div>
+<nav class="tabs" aria-label="Вкладки канала">
+  <a class="tab{% if tab == 'videos' %} active{% endif %}" data-tab="videos" href="/channel/{{ channel.id }}?tab=videos">Видео</a>
+  <a class="tab{% if tab == 'playlists' %} active{% endif %}" data-tab="playlists" href="/channel/{{ channel.id }}?tab=playlists">Плейлисты</a>
+</nav>
+{% if tab == 'playlists' %}
+  {% if playlists %}
+  <ul class="pl-list">
+    {% for p in playlists %}
+    <li class="pl-item">
+      <a class="pl-link" href="/playlist/{{ p.id }}">
+        <span class="pl-title">{{ p.title }}</span>
+        {% if p.is_private %}<span class="badge private">приватный</span>{% endif %}
+        <span class="muted">{{ p.count_label }} · {{ p.date }}</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty" data-testid="empty">
+    <p class="empty-title">{{ empty_title }}</p>
+    <p class="empty-sub">{{ empty_sub }}</p>
+  </div>
+  {% endif %}
+{% else %}
+  {% include "_cards.html" %}
+{% endif %}
+{% endblock %}
+{% block scripts %}<script src="/static/channel.js"></script>{% endblock %}

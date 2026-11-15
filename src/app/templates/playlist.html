@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ playlist.title }}{% endblock %}
+{% block content %}
+<div class="pl-head" data-playlist-id="{{ playlist.id }}"
+     {% if playlist.is_owner %}data-is-owner="1"{% endif %}>
+  <h1 class="page-title">{{ playlist.title }}</h1>
+  <div class="muted">
+    {{ playlist.item_count }} {{ playlist.item_count }} видео · {{ playlist.date }}
+    {% if playlist.is_private %}<span class="badge private">приватный</span>{% endif %}
+  </div>
+  {% if playlist.is_owner %}
+  <div class="row-actions">
+    <button id="pl-edit-btn" class="btn sm" type="button">Переименовать</button>
+    <button id="pl-del-btn" class="btn sm danger" type="button">Удалить плейлист</button>
+  </div>
+  <form id="pl-edit-form" class="edit-form" hidden>
+    <input type="text" name="title" value="{{ playlist.title }}" maxlength="200" required>
+    <label class="priv"><input type="checkbox" name="is_private"{% if playlist.is_private %} checked{% endif %}> приватный</label>
+    <div class="row-actions">
+      <button class="btn primary sm" type="submit">Сохранить</button>
+    </div>
+  </form>
+  <form id="pl-add-form" class="acl-form">
+    <input type="text" name="video_id" placeholder="UUID видео" required>
+    <button class="btn sm" type="submit">Добавить видео</button>
+  </form>
+  <div class="form-error" id="pl-error" hidden></div>
+  {% endif %}
+</div>
+{% if items %}
+<ol class="pl-items">
+  {% for it in items %}
+  <li class="pl-video" data-video-id="{{ it.video_id }}">
+    <span class="pl-pos muted">{{ it.position }}</span>
+    <a href="/watch/{{ it.video_id }}">{{ it.title }}</a>
+    {% if playlist.is_owner %}
+    <button class="btn sm ghost pl-remove" type="button" data-video="{{ it.video_id }}">Убрать</button>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ol>
+{% else %}
+<div class="empty" data-testid="empty">
+  <p class="empty-title">Плейлист пуст</p>
+  <p class="empty-sub">Добавьте видео — например, со страницы просмотра.</p>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}{% if playlist.is_owner %}<script src="/static/playlist.js"></script>{% endif %}{% endblock %}

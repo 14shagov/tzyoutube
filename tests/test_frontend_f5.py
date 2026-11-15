@@ -30,6 +30,20 @@ class _FeedRepo:
         return [v for v in self.videos if q.lower() in v.title.lower()]
 
 
+class _VisChannelRepo(FakeChannelRepo):
+    """FakeChannelRepo + the real visibility rule (owner sees all non-deleted,
+    others only ready+public) so page tests see what the SQL repo would return."""
+
+    async def list_channel_videos(self, channel_id, *, viewer_id, limit, offset):
+        vids = list(self.videos.get(channel_id, []))
+        if viewer_id is None or viewer_id != channel_id:
+            vids = [v for v in vids if v.status == "ready" and not v.is_private]
+        else:
+            vids = [v for v in vids if v.status != "deleted"]
+        self.last_viewer_id = viewer_id
+        return vids[offset : offset + limit]
+
+
 def _mk_video(owner_id, title="v", status="ready", is_private=False):
     v = _video(user_id=owner_id, title=title, status=status, is_private=is_private)
     if getattr(v, "created_at", None) is None:
@@ -38,6 +52,9 @@ def _mk_video(owner_id, title="v", status="ready", is_private=False):
 
 
 def _app5(channel_repo, sub_repo, playlist_repo=None, user_repo=None, user=None, feed=()):
+    if not isinstance(channel_repo, _VisChannelRepo):
+        channel_repo = _VisChannelRepo(channel_repo.users, channel_repo.counts,
+                                       channel_repo.videos, channel_repo.taken_names)
     app = create_app()
     app.dependency_overrides[channels_api.get_channel_repo] = lambda: channel_repo
     app.dependency_overrides[channels_api.get_subscription_repo] = lambda: sub_repo
@@ -150,7 +167,8 @@ def test_subscriptions_page_guest_redirect_and_user_list() -> None:
     v = _mk_video(owner.id, title="fresh video")
     sub.feed_videos = [v]
     # guest -> 303 to /login?next=/subscriptions
-    r = _app5(FakeChannelRepo({}), sub, user_repo=FakeUserRepo()).get("/subscriptions")
+    r = _app5(FakeChannelRepo({}), sub, user_repo=FakeUserRepo()).get(
+        "/subscriptions", follow_redirects=False)
     assert r.status_code == 303
     assert "/login?next=/subscriptions" in r.headers["location"]
     # user -> 200 with channel + feed video

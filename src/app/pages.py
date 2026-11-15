@@ -19,6 +19,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.api import auth as auth_api
 from app.api import channels as channels_api
+from app.api import playlists as playlists_api
 from app.api import videos as videos_api
 from app.core.storage import BUCKETS
 
@@ -367,4 +368,142 @@ async def my_videos_page(
     return templates.TemplateResponse(request, "my_videos.html", {
         "request": request, "user": _public_user(user), "page": "me", "brand": BRAND,
         "rows": rows,
+    })
+
+
+# --- F5: channel page, subscriptions, playlist page ---------------------------
+
+
+@router.get("/channel/{channel_id}", response_class=HTMLResponse, include_in_schema=False)
+async def channel_page(
+    request: Request,
+    channel_id: uuid.UUID,
+    tab: str = "videos",
+    user=Depends(videos_api._optional_user),
+    channel_repo=Depends(channels_api.get_channel_repo),
+    sub_repo=Depends(channels_api.get_subscription_repo),
+    playlist_repo=Depends(playlists_api.get_playlist_repo),
+    user_repo=Depends(auth_api.get_user_repo),
+):
+    owner = await channel_repo.get_user(channel_id)
+    if owner is None:
+        raise HTTPException(404, "channel not found")
+    viewer_id = user.id if user is not None else None
+    subscribed = (
+        await sub_repo.is_subscribed(user.id, channel_id) if user is not None else False
+    )
+    sub_count = await channel_repo.subscriber_count(channel_id)
+    vid_count = await channel_repo.public_video_count(channel_id)
+
+    cards: list[dict] = []
+    playlist_rows: list[dict] = []
+    if tab == "playlists":
+        pls = await playlist_repo.list_channel_playlists(
+            channel_id, viewer_id=viewer_id, limit=50, offset=0
+        )
+        playlist_rows = [
+            {
+                "id": p.id,
+                "title": p.title,
+                "is_private": p.is_private,
+                "item_count": await playlist_repo.item_count(p.id),
+                "count_label": f"{await playlist_repo.item_count(p.id)} "
+                f"{plural(await playlist_repo.item_count(p.id), 'видео', 'видео', 'видео')}",
+                "date": time_ago(getattr(p, "created_at", None)),
+            }
+            for p in pls
+        ]
+    else:
+        vids = await channel_repo.list_channel_videos(
+            channel_id, viewer_id=viewer_id, limit=50, offset=0
+        )
+        cards = await _feed_cards(vids, user_repo)
+
+    return templates.TemplateResponse(request, "channel.html", {
+        "request": request,
+        "user": _public_user(user),
+        "page": "channel",
+        "brand": BRAND,
+        "channel": {
+            "id": owner.id,
+            "channel_name": owner.channel_name,
+            "description": getattr(owner, "channel_description", None) or "",
+            "avatar_url": channels_api.DEFAULT_AVATAR_URL,
+            "sub_count": sub_count,
+            "sub_label": f"{sub_count} {plural(sub_count, 'подписчик', 'подписчика', 'подписчиков')}",
+            "vid_count": vid_count,
+            "vid_label": f"{vid_count} {plural(vid_count, 'видео', 'видео', 'видео')}",
+            "subscribed": subscribed,
+            "is_owner": user is not None and user.id == channel_id,
+        },
+        "tab": "playlists" if tab == "playlists" else "videos",
+        "cards": cards,
+        "playlists": playlist_rows,
+        "empty_title": "Нет видео" if tab != "playlists" else "Нет плейлистов",
+        "empty_sub": "",
+    })
+
+
+@router.get("/subscriptions", response_class=HTMLResponse, include_in_schema=False)
+async def subscriptions_page(
+    request: Request,
+    user=Depends(videos_api._optional_user),
+    sub_repo=Depends(channels_api.get_subscription_repo),
+    user_repo=Depends(auth_api.get_user_repo),
+):
+    redirect = _require_user_page(user, "/subscriptions")
+    if redirect is not None:
+        return redirect
+    channels = await sub_repo.subscribed_channels(user.id, limit=50, offset=0)
+    videos = await sub_repo.subscriptions_feed(user.id, limit=24, offset=0)
+    cards = await _feed_cards(videos, user_repo)
+    chan_rows = [
+        {"id": c.id, "channel_name": c.channel_name, "avatar_url": channels_api.DEFAULT_AVATAR_URL}
+        for c in channels
+    ]
+    return templates.TemplateResponse(request, "subs.html", {
+        "request": request,
+        "user": _public_user(user),
+        "page": "subs",
+        "brand": BRAND,
+        "channels": chan_rows,
+        "cards": cards,
+        "empty_title": "Нет видео от подписок",
+        "empty_sub": "Подпишитесь на каналы — и их новые видео появятся здесь.",
+    })
+
+
+@router.get("/playlist/{playlist_id}", response_class=HTMLResponse, include_in_schema=False)
+async def playlist_page(
+    request: Request,
+    playlist_id: uuid.UUID,
+    user=Depends(videos_api._optional_user),
+    playlist_repo=Depends(playlists_api.get_playlist_repo),
+):
+    from app.services import access
+    from app.services import playlists as playlists_svc
+
+    pl = await playlist_repo.get(playlist_id)
+    if pl is None or not playlists_svc.can_view_playlist(pl, user):
+        raise HTTPException(404, "not found")
+    pairs = await playlist_repo.list_items_with_videos(playlist_id)
+    items = [
+        {"video_id": item.video_id, "title": video.title, "position": item.position}
+        for item, video in pairs
+        if access.can_view(video, user)
+    ]
+    return templates.TemplateResponse(request, "playlist.html", {
+        "request": request,
+        "user": _public_user(user),
+        "page": "playlist",
+        "brand": BRAND,
+        "playlist": {
+            "id": pl.id,
+            "title": pl.title,
+            "is_private": pl.is_private,
+            "date": time_ago(getattr(pl, "created_at", None)),
+            "item_count": len(items),
+            "is_owner": user is not None and user.id == pl.user_id,
+        },
+        "items": items,
     })
