@@ -54,6 +54,7 @@ EXPECTED_ROUTES = {
     ("POST", "/api/videos/{video_id}/report"),
     ("GET", "/api/mod/reports"),
     ("POST", "/api/mod/reports/{report_id}/resolve"),
+    ("GET", "/api/admin/users"),
     ("PATCH", "/api/admin/users/{user_id}"),
     # infra
     ("GET", "/health"),

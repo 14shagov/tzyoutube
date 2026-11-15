@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}{{ code }}{% endblock %}
+{% block content %}
+<div class="empty error-page" data-testid="error-page">
+  <p class="empty-title">{{ code }}</p>
+  <p class="empty-sub">{{ message }}</p>
+  <p><a class="btn" href="/">На главную</a></p>
+</div>
+{% endblock %}

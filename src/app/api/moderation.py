@@ -73,6 +73,11 @@ class AdminUserPatch(BaseModel):
     is_blocked: bool | None = None
 
 
+class UserListOut(BaseModel):
+    items: list[UserPublic]
+    total: int
+
+
 def get_report_repo(
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -149,6 +154,18 @@ async def resolve_report(
     return ResolveOut(
         report=ReportOut.model_validate(report), video_status=video.status
     )
+
+
+@router.get("/admin/users", response_model=UserListOut)
+async def admin_list_users(
+    limit: Annotated[int, Query(ge=0, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    admin: User = Depends(require_role("admin")),
+    user_repo=Depends(get_user_repo),
+) -> UserListOut:
+    """F6 admin UI: paginated list of all users with total count."""
+    items, total = await user_repo.list_all(limit=limit, offset=offset)
+    return UserListOut(items=[UserPublic.model_validate(u) for u in items], total=total)
 
 
 @router.patch("/admin/users/{user_id}", response_model=UserPublic)

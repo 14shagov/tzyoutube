@@ -19,6 +19,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.api import auth as auth_api
 from app.api import channels as channels_api
+from app.api import moderation as moderation_api
 from app.api import playlists as playlists_api
 from app.api import videos as videos_api
 from app.core.storage import BUCKETS
@@ -506,4 +507,68 @@ async def playlist_page(
             "is_owner": user is not None and user.id == pl.user_id,
         },
         "items": items,
+    })
+
+
+# --- F6: moderation & admin page ----------------------------------------------
+
+
+@router.get("/mod", response_class=HTMLResponse, include_in_schema=False)
+async def mod_page(
+    request: Request,
+    status: str = "new",
+    user=Depends(videos_api._optional_user),
+    report_repo=Depends(moderation_api.get_report_repo),
+    user_repo=Depends(auth_api.get_user_repo),
+):
+    from app.services import access
+
+    redirect = _require_user_page(user, "/mod")
+    if redirect is not None:
+        return redirect
+    if user.role not in access.STAFF_ROLES:
+        return templates.TemplateResponse(
+            request, "error.html",
+            {"request": request, "user": _public_user(user), "brand": BRAND,
+             "code": 403, "message": "Доступ только модераторам и администраторам"},
+            status_code=403,
+        )
+    status_filter = status if status in ("new", "resolved", "dismissed") else None
+    raw_reports, total = await report_repo.list(status=status_filter, limit=100, offset=0)
+    reporter_ids = {r.reporter_id for r in raw_reports}
+    reporters = {u.id: u for u in await user_repo.get_by_ids(reporter_ids)} if reporter_ids else {}
+    reports = [
+        {
+            "id": r.id,
+            "video_id": r.video_id,
+            "reason": r.reason,
+            "comment": r.comment,
+            "status": r.status,
+            "resolution": r.resolution,
+            "resolution_note": r.resolution_note,
+            "resolved_at": time_ago(getattr(r, "resolved_at", None)),
+            "created": time_ago(getattr(r, "created_at", None)),
+            "reporter": reporters.get(r.reporter_id),
+        }
+        for r in raw_reports
+    ]
+    admin_users = []
+    if user.role == "admin":
+        users, _total = await user_repo.list_all(limit=100, offset=0)
+        admin_users = [
+            {"id": u.id, "email": u.email, "channel_name": u.channel_name,
+             "role": u.role, "is_blocked": bool(u.is_blocked),
+             "date": time_ago(getattr(u, "created_at", None))}
+            for u in users
+        ]
+    return templates.TemplateResponse(request, "mod.html", {
+        "request": request,
+        "user": _public_user(user),
+        "page": "mod",
+        "brand": BRAND,
+        "is_admin": user.role == "admin",
+        "status_filter": status,
+        "reports": reports,
+        "total": total,
+        "admin_users": admin_users,
     })

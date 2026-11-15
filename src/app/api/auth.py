@@ -10,7 +10,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Response
 from fastapi import status as http_status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -95,6 +95,18 @@ class SqlUserRepo:
         await self._session.commit()
         await self._session.refresh(user)
         return user
+
+    async def list_all(self, *, limit: int, offset: int) -> tuple[list[User], int]:
+        """F6 admin UI: paginated user list with total count."""
+        total = (await self._session.execute(select(func.count(User.id)))).scalar_one()
+        stmt = (
+            select(User)
+            .order_by(User.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all()), int(total)
 
 
 async def get_user_repo(

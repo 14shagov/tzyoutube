@@ -447,6 +447,15 @@ progress#progress { width: 100%; height: 8px; accent-color: var(--accent); }
 .pl-video a:hover { text-decoration: underline; }
 .pl-pos { min-width: 24px; text-align: right; }
 
+/* F6: moderation page + error page */
+.resolve-note { width: 100%; margin-top: 6px; background: var(--input-bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: inherit; font-size: 12px; }
+.badge.new { background: rgba(28, 98, 185, 0.15); color: #1c62b9; }
+.badge.resolved { background: rgba(10, 125, 44, 0.15); color: var(--ok); }
+.badge.dismissed { background: var(--chip); color: var(--fg-soft); }
+.table select, .table input[type="checkbox"] { font: inherit; accent-color: var(--accent); }
+.error-page { text-align: center; padding: 60px 0; }
+.error-page .empty-title { font-size: 48px; }
+
 /* --- tables (my videos, moderation, admin) --- */
 .table { width: 100%; border-collapse: collapse; }
 .table th, .table td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }

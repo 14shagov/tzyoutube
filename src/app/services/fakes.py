@@ -92,3 +92,7 @@ class FakeUserRepo:
     async def update_user(self, user: User) -> User:
         self.users[user.id] = user
         return user
+
+    async def list_all(self, *, limit: int, offset: int) -> tuple[list, int]:
+        users = sorted(self.users.values(), key=lambda u: u.created_at or datetime.now(UTC), reverse=True)
+        return users[offset : offset + limit], len(users)

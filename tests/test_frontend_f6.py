@@ -9,6 +9,7 @@ admin user list API (list_all on UserRepo), and the new route in openapi.
 import uuid
 from datetime import UTC, datetime
 
+from fastapi.testclient import TestClient
 from test_moderation_api import FakeReportRepo
 from test_video_manage_api import _video
 
@@ -23,7 +24,9 @@ from app.services.fakes import FakeUserRepo
 def _user(role="user", email="u@example.com", channel_name="user1"):
     from test_channels_api import _user as _mk
 
-    return _mk(role=role, email=email, channel_name=channel_name)
+    u = _mk(role=role, email=email, channel_name=channel_name)
+    u.is_blocked = False  # UserPublic requires a real bool
+    return u
 
 
 def _report(video_id, reporter_id, reason="spam", comment="bad <script>alert(1)</script>"):
@@ -52,7 +55,7 @@ def _app(report_repo, user_repo=None, current=None):
         from app.api import videos as videos_api
 
         app.dependency_overrides[videos_api._optional_user] = lambda: None
-    return app, user_repo
+    return TestClient(app), user_repo
 
 
 # --- API: GET /api/admin/users -------------------------------------------------
@@ -113,9 +116,10 @@ def test_mod_page_moderator_sees_reports():
     user_repo = FakeUserRepo()
     user_repo.users[reporter.id] = reporter
     user_repo.users[mod.id] = mod
-    v = _video(title="Bad video")
+    v = _video(reporter.id, title="Bad video")
     repo = FakeReportRepo()
-    repo.reports[_report(v.id, reporter.id).id] = _report(v.id, reporter.id)
+    rep = _report(v.id, reporter.id)
+    repo.reports[rep.id] = rep
     c, _ = _app(repo, user_repo=user_repo, current=mod)
     r = c.get("/mod")
     assert r.status_code == 200
@@ -124,13 +128,12 @@ def test_mod_page_moderator_sees_reports():
     assert "spam" in body
     assert "bad &lt;script&gt;" in body  # XSS-escaped comment
     assert "<script>alert(1)</script>" not in body
-    assert "/watch/%s" % v.id in body
+    assert f"/watch/{v.id}" in body
     assert 'data-action="hide"' in body
     assert 'data-action="unhide"' in body
     assert 'data-action="dismiss"' in body
     assert 'name="note"' in body
     assert "/static/mod.js" in body
-    assert "on" not in body.split("<script")[0].split(">")[0] or True
     # no inline handlers
     import re
 

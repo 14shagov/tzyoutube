@@ -79,6 +79,9 @@ class UserRepo(Protocol):
     async def get_by_ids(self, ids: Iterable[uuid.UUID]) -> list[User]:
         """Bulk fetch (F3: comment authors on the watch page)."""
 
+    async def list_all(self, *, limit: int, offset: int) -> tuple[list[User], int]:
+        """F6 admin UI: paginated user list (items, total)."""
+
     async def create_user(self, email: str, password_hash: str, channel_name: str) -> User: ...
 
     async def create_session(self, user_id: uuid.UUID, expires_at: datetime) -> SessionToken: ...
