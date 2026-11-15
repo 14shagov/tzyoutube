@@ -9,16 +9,20 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import status as http_status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
-from app.api.videos import _optional_user, _thumb_url
+from app.api.videos import FeedItem, FeedOut, _optional_user, _thumb_url
 from app.core.db import get_db_session
 from app.models import User
+from app.services import social
 from app.services.social import ChannelRepo, SubscriptionRepo
 
 router = APIRouter(prefix="/api/channels", tags=["channels"])
+# /api/subscriptions and /api/feed/subscriptions live under /api (3B).
+api_router = APIRouter(prefix="/api", tags=["subscriptions"])
 
 # Avatar stub until real avatar uploads exist (FR-3 placeholder).
 DEFAULT_AVATAR_URL = "/static/avatar.png"
@@ -65,6 +69,16 @@ class ChannelVideosOut(BaseModel):
 class ChannelPatchIn(BaseModel):
     channel_name: str | None = Field(default=None, min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=5000)
+
+
+class ChannelSummary(BaseModel):
+    id: uuid.UUID
+    channel_name: str
+    avatar_url: str
+
+
+class SubscriptionListOut(BaseModel):
+    items: list[ChannelSummary]
 
 
 def _channel_out(user: User, sub_count: int, vid_count: int, subscribed: bool) -> ChannelOut:
@@ -153,3 +167,64 @@ async def patch_channel(
         # Self-subscription is forbidden, so the owner's own flag is False.
         await sub_repo.is_subscribed(user.id, channel_id),
     )
+
+
+# --- 3B: subscriptions ------------------------------------------------------
+
+
+@router.post("/{channel_id}/subscribe", status_code=http_status.HTTP_204_NO_CONTENT)
+async def subscribe(
+    channel_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    channel_repo: ChannelRepo = Depends(get_channel_repo),
+    sub_repo: SubscriptionRepo = Depends(get_subscription_repo),
+) -> None:
+    if await channel_repo.get_user(channel_id) is None:
+        raise HTTPException(404, "channel not found")
+    try:
+        await social.subscribe(sub_repo, user, channel_id)
+    except social.SelfSubscription:
+        raise HTTPException(422, "cannot subscribe to your own channel") from None
+
+
+@router.delete("/{channel_id}/subscribe", status_code=http_status.HTTP_204_NO_CONTENT)
+async def unsubscribe(
+    channel_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    channel_repo: ChannelRepo = Depends(get_channel_repo),
+    sub_repo: SubscriptionRepo = Depends(get_subscription_repo),
+) -> None:
+    if await channel_repo.get_user(channel_id) is None:
+        raise HTTPException(404, "channel not found")
+    await sub_repo.unsubscribe(user.id, channel_id)  # idempotent
+
+
+@api_router.get("/subscriptions", response_model=SubscriptionListOut)
+async def my_subscriptions(
+    limit: Annotated[int, Query(ge=0, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    user: User = Depends(get_current_user),
+    sub_repo: SubscriptionRepo = Depends(get_subscription_repo),
+) -> SubscriptionListOut:
+    channels = await sub_repo.subscribed_channels(user.id, limit=limit, offset=offset)
+    return SubscriptionListOut(items=[
+        ChannelSummary(id=c.id, channel_name=c.channel_name, avatar_url=DEFAULT_AVATAR_URL)
+        for c in channels
+    ])
+
+
+@api_router.get("/feed/subscriptions", response_model=FeedOut)
+async def subscriptions_feed(
+    limit: Annotated[int, Query(ge=0, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    user: User = Depends(get_current_user),
+    sub_repo: SubscriptionRepo = Depends(get_subscription_repo),
+) -> FeedOut:
+    videos = await sub_repo.subscriptions_feed(user.id, limit=limit, offset=offset)
+    return FeedOut(items=[
+        FeedItem(
+            id=v.id, title=v.title, thumbnail_url=_thumb_url(v),
+            duration_seconds=v.duration_seconds, view_count=v.view_count,
+        )
+        for v in videos
+    ])

@@ -84,6 +84,7 @@ def create_app() -> FastAPI:
     app.include_router(videos_api.router)
     app.include_router(videos_api.feed_router)
     app.include_router(channels_api.router)
+    app.include_router(channels_api.api_router)
 
     # Temporary demo endpoint to prove the role guard wiring works.
     # Real admin endpoints arrive in stage 4 (plan 4.4).
