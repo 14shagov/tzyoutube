@@ -1,6 +1,40 @@
 # Статус проекта
 
-Обновлено: 2026-11-14 (ревью, группы A, B, C и D закрыты; баги реального стека presign и content-type закрыты; юнит-прогон 299 passed).
+Обновлено: 2026-11-15 (фронтенд F1–F7 готов, ADR-007; ранее — ревью A–D, этап 3–4 API 3A–3G; юнит-прогон 474 passed).
+
+## Фронтенд (ADR-007, задача владельца m02359) — сделано 2026-11-15
+
+SSR Jinja2 в FastAPI + внешний JS без сборки/CDN; CSP `script-src 'self'` в
+nginx; темы (CSS-переменные + prefers-color-scheme + переключатель);
+адаптив; страницы F1–F7. По каждому срезу — красный тест отдельным коммитом
+перед фиксом. `uv run pytest -q` = **474 passed**, ruff чист.
+
+- F1 `ac95ecb`(red) `2e46fc4`: base.html (шапка/сайдбар/тосты), home+search,
+  _cards.html, app.css/temы, theme.js/app.js, /static mount, CSP в nginx +
+  CSP_MEDIA_ORIGIN в compose, страж внешних URL/inline/|safe.
+- F2 `9d59a1c`(red) `7d81170`(+`7ad73d0`): /login /register, auth.html+auth.js,
+  состояние пользователя в шапке, open-redirect guard для next.
+- F3 `253d992`(red) `dda6800`: /watch/{id} (плеер, лайки с my_reaction,
+  подписка, комментарии+авторы, рекомендации); API: ReactionOut.my_reaction,
+  GET /api/videos/{id}/reactions, CommentOut.user_id/channel_name +
+  UserRepo.get_by_ids.
+- F4 `a04b406`(red) `3ef10e1`: /upload (dropzone + XHR-прогресс + опрос
+  статуса), /me/videos (edit/delete/приватность/ACL), upload.js/manage.js.
+- F5 `ea4a3ee`(red) `4d5759d`: /channel/{id} (шапка, табы, подписка, PATCH
+  владельца), /subscriptions, /playlist/{id}.
+- F6 `95f6c86`(red) `96cc844`: /mod (жалобы + resolve + админ-таблица
+  пользователей), GET /api/admin/users (UserRepo.list_all), error.html,
+  матрица ролей на странице.
+- F7 `0fa211a`(red) `8f5948a`: HTML-страницы ошибок 403/404/500 для
+  браузерных маршрутов (JSON для /api,/auth), стражи: нет внешних URL,
+  inline-скриптов, on*= и |safe в шаблонах/статике.
+- Документация: ADR-007 (docs/adr/ADR-007-frontend.md), README (страницы UI),
+  architecture.md §8, manual-checks.md п.18 (F1–F7: URL + что видно).
+
+### Дальше
+
+- Ждём команду владельца: ручные проверки фронтенда (manual-checks п.18),
+  затем этап 5 (seed/deploy.sh) или замечания по UI.
 
 ## Ускорение юнит-прогона (задания владельца, по одному коммиту)
 

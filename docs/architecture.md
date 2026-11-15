@@ -138,3 +138,35 @@ flowchart LR
 ├── scripts/seed.py                # демо-данные
 └── tests/                         # unit (без Docker) + integration (маркер, с Docker)
 ```
+
+## 8. Фронтенд (ADR-007, реализовано 2026-11-15)
+
+SSR на Jinja2 внутри FastAPI: все HTML-роуты в `src/app/pages.py`, шаблоны в
+`src/app/templates/`, статика (CSS/JS) в `src/app/static/` и раздаётся
+same-origin через `app.mount("/static")` — без CDN и внешних шрифтов (CSP
+`script-src 'self'` в nginx). Весь JS — внешние файлы, без inline-скриптов
+и on*-обработчиков; пользовательские данные только с автоэкранированием
+Jinja (никакого `|safe`).
+
+- `pages.py`: роуты `/`, `/search`, `/login`, `/register`, `/watch/{id}`,
+  `/upload`, `/me/videos`, `/channel/{id}`, `/subscriptions`, `/playlist/{id}`,
+  `/mod`; общие фильтры Jinja (`fmt_duration`, `time_ago`, `plural`);
+  зависимости страниц — те же provider-функции, что у API (переопределяются
+  в тестах один раз).
+- Шаблоны: `base.html` (шапка: меню, логотип, поиск, загрузка, переключатель
+  темы, аватар/вход; сайдбар: Главная/Подписки/Вы/Модерация; тосты),
+  `home.html`+`_cards.html` (сетка карточек 16:9), `auth.html`, `watch.html`,
+  `upload.html`, `my_videos.html`, `channel.html`, `subs.html`,
+  `playlist.html`, `mod.html`, `error.html` (403/404/500 для браузерных
+  маршрутов; API отвечает JSON).
+- JS: `theme.js` (в `<head>`: тема из localStorage/prefers-color-scheme),
+  `app.js` (хелпер `window.tzApi` fetch same-origin, тосты, меню/тема/выход),
+  `auth.js`, `watch.js` (просмотр, лайки, подписка, комментарии, жалоба),
+  `upload.js` (dropzone + XHR-прогресс + опрос статуса), `manage.js`
+  (редактирование/удаление/приватность/ACL), `channel.js`, `playlist.js`,
+  `mod.js` (решение жалоб, админка ролей).
+- Темы: CSS-переменные в `app.css`, светлая по умолчанию, тёмная через
+  `[data-theme="dark"]` и `prefers-color-scheme`; адаптив до ширины телефона.
+- Стражи: `tests/test_frontend_f7.py` — нет внешних URL в шаблонах/статике,
+  нет inline-скриптов/on*-обработчиков/|safe; F1–F6 — рендер страниц для
+  гостя и ролей, XSS-экранирование пользовательского текста, права на /mod.

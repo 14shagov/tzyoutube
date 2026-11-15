@@ -1,7 +1,8 @@
 # tzyoutube
 
 Test project: a small YouTube clone (FastAPI + PostgreSQL + S3 storage +
-arq worker + nginx, all in docker compose).
+arq worker + nginx, all in docker compose). Frontend: SSR Jinja2 pages +
+small external JS (no bundler, no CDN) — see docs/adr/ADR-007-frontend.md.
 
 ## Quick start (local)
 
@@ -10,7 +11,25 @@ cp .env.example .env        # fill in the placeholder secrets
 docker compose up -d --build
 ```
 
-Open http://localhost — API docs at http://localhost/docs.
+Open http://localhost — the web UI; API docs at http://localhost/docs.
+
+## Web UI pages
+
+| URL | What |
+|---|---|
+| `/` | home feed (chips row + 16:9 card grid) |
+| `/search?q=…` | search results |
+| `/login`, `/register` | auth (session cookie) |
+| `/watch/{video_id}` | player, like/dislike, subscribe, comments, recommendations |
+| `/upload` | upload with progress bar + transcode status polling |
+| `/me/videos` | my videos: edit / delete / privacy / ACL |
+| `/channel/{channel_id}?tab=videos|playlists` | channel page |
+| `/subscriptions` | my subscriptions + their new videos |
+| `/playlist/{playlist_id}` | playlist page |
+| `/mod` | moderation queue (staff) + user admin (admin) |
+
+Light/dark theme via the header toggle (or OS preference); responsive down
+to phone widths.
 
 ## Deploying to a VM (HTTP)
 
