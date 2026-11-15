@@ -4,7 +4,9 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import HTTPException as StarletteHTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app import pages as pages_api
@@ -103,6 +105,54 @@ def create_app() -> FastAPI:
         StaticFiles(directory=str(pages_api.STATIC_DIR)),
         name="static",
     )
+
+    # F7: HTML error pages for browser routes; API paths keep JSON details.
+    # A JSON request (Accept: application/json, X-Requested-With, or an
+    # /api, /auth, /docs path) gets the plain FastAPI JSON error instead.
+    @app.exception_handler(StarletteHTTPException)
+    async def _http_error_page(request: Request, exc: StarletteHTTPException):
+        is_api = (
+            request.url.path.startswith(("/api", "/auth", "/docs", "/openapi.json"))
+            or "application/json" in request.headers.get("accept", "")
+            or request.headers.get("x-requested-with") == "XMLHttpRequest"
+        )
+        if is_api:
+            return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+        return pages_api.templates.TemplateResponse(
+            request,
+            "error.html",
+            {
+                "request": request,
+                "user": None,
+                "brand": pages_api.BRAND,
+                "code": exc.status_code,
+                "message": str(exc.detail),
+            },
+            status_code=exc.status_code,
+        )
+
+    @app.exception_handler(Exception)
+    async def _unhandled_error(request: Request, exc: Exception):
+        logger.exception("unhandled error on %s %s", request.method, request.url.path)
+        is_api = (
+            request.url.path.startswith(("/api", "/auth", "/docs", "/openapi.json"))
+            or "application/json" in request.headers.get("accept", "")
+            or request.headers.get("x-requested-with") == "XMLHttpRequest"
+        )
+        if is_api:
+            return JSONResponse({"detail": "internal server error"}, status_code=500)
+        return pages_api.templates.TemplateResponse(
+            request,
+            "error.html",
+            {
+                "request": request,
+                "user": None,
+                "brand": pages_api.BRAND,
+                "code": 500,
+                "message": "Внутренняя ошибка сервера",
+            },
+            status_code=500,
+        )
 
     return app
 
