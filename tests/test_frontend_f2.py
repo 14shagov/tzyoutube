@@ -5,15 +5,14 @@ already-authenticated user away, carry ?next= through, keep the header in
 sync (channel name + Выйти vs Войти), and escape user data (XSS).
 """
 
-import uuid
 
 from fastapi.testclient import TestClient
+from test_viewing_api import FakeFeedRepo, FakeUser
 
 from app.api import auth as auth_api
 from app.api import videos as videos_api
 from app.main import create_app
 from app.services.fakes import FakeUserRepo
-from test_viewing_api import FakeFeedRepo, FakeUser
 
 
 def _app(user=None) -> TestClient:
