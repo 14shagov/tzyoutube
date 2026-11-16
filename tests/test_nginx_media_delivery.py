@@ -13,7 +13,7 @@
 
 import re
 
-from test_nginx_config import NGINX_CONF, _block, _text
+from test_nginx_config import NGINX_TEMPLATE, _block, _text
 
 SILO_LOCATIONS = ["location /videos/", "location /thumbnails/", "location /media/thumbnails/"]
 
@@ -85,4 +85,4 @@ class TestNoDuplicateSecurityHeaders:
         # block + media location (which re-declares because of Cache-Control)
         text = _text()
         assert len(re.findall(r"add_header\s+X-Content-Type-Options", text)) == 2
-        assert NGINX_CONF.exists()
+        assert NGINX_TEMPLATE.exists()

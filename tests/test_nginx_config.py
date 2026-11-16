@@ -1,17 +1,19 @@
 """C5: nginx perimeter hardening — security headers, auth rate limit,
 512m body cap ONLY on the upload location, unbuffered upload proxying.
 
-Static parse of nginx/nginx.conf (no nginx needed in unit tests).
+Static parse of the envsubst template nginx/default.conf.template (no nginx
+needed in unit tests); the rendered-config view lives in
+test_nginx_template_render.py (ADR-008).
 """
 
 import re
 from pathlib import Path
 
-NGINX_CONF = Path(__file__).resolve().parents[1] / "nginx" / "nginx.conf"
+NGINX_TEMPLATE = Path(__file__).resolve().parents[1] / "nginx" / "default.conf.template"
 
 
 def _text() -> str:
-    return NGINX_CONF.read_text(encoding="utf-8")
+    return NGINX_TEMPLATE.read_text(encoding="utf-8")
 
 
 def _block(text: str, marker: str) -> str:

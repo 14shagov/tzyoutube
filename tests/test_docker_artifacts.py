@@ -63,7 +63,11 @@ def test_no_latest_tags_anywhere() -> None:
 def test_no_removed_minio_images() -> None:
     """MinIO images were removed from Docker Hub; Silo (ADR-001) is used."""
     forbidden = re.compile(r"minio/minio|minio/mc|quay\.io/minio")
-    for path in (COMPOSE_PATH, DOCKERFILE_PATH, PROJECT_ROOT / "nginx" / "nginx.conf"):
+    for path in (
+        COMPOSE_PATH,
+        DOCKERFILE_PATH,
+        PROJECT_ROOT / "nginx" / "default.conf.template",
+    ):
         text = path.read_text(encoding="utf-8")
         matches = forbidden.findall(text)
         assert not matches, f"{path.name} references removed MinIO images: {matches}"

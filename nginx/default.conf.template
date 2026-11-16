@@ -10,7 +10,11 @@
 
 # C5: IP-level rate limiting for the auth endpoints. The app layers its
 # own per-account limits (register/login) on top; this is the perimeter.
-# This file is mounted at /etc/nginx/conf.d/default.conf (http context).
+# This file is an envsubst template: mounted at
+# /etc/nginx/templates/default.conf.template, the nginx image entrypoint
+# renders it to /etc/nginx/conf.d/default.conf on start, substituting ONLY
+# variables matching NGINX_ENVSUBST_FILTER=^CSP_ (ADR-008). Every other
+# $variable below is nginx's own and must NOT be substituted.
 limit_req_zone $binary_remote_addr zone=auth_per_ip:10m rate=10r/m;
 
 server {
@@ -29,10 +33,12 @@ server {
 
     # F1 (ADR-007): CSP allows ONLY same-origin scripts/styles — every JS
     # file is external (/static/*.js), there are no inline handlers, so
-    # script-src 'self' holds. Media may also come from the presign host
-    # ($CSP_MEDIA_ORIGIN is set from S3_PUBLIC_ENDPOINT in compose; nginx
-    # exposes env vars as variables by default, unset -> empty).
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' $CSP_MEDIA_ORIGIN; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+    # script-src 'self' holds. Media may also come from the presign host:
+    # compose assembles CSP_MEDIA_ORIGIN from CSP_MEDIA_SCHEME +
+    # S3_PUBLIC_ENDPOINT (with port, no hardcoded scheme — ADR-008) and the
+    # entrypoint substitutes it here (^CSP_ filter); if it were unset,
+    # envsubst would substitute an empty string, which media-src tolerates.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' ${CSP_MEDIA_ORIGIN}; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'" always;
 
     # C5: auth endpoints (bcrypt cost 12) are rate-limited at the proxy too.
     location /auth/ {

@@ -113,7 +113,7 @@ def test_no_inline_scripts_handlers_or_safe() -> None:
 
 
 def test_nginx_ships_csp_and_compose_media_origin() -> None:
-    conf = (ROOT / "nginx" / "nginx.conf").read_text(encoding="utf-8")
+    conf = (ROOT / "nginx" / "default.conf.template").read_text(encoding="utf-8")
     assert "Content-Security-Policy" in conf
     assert "script-src 'self'" in conf
     compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")

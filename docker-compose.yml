@@ -104,10 +104,19 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Template, not a ready config: the image entrypoint renders it to
+      # /etc/nginx/conf.d/ on start. A direct conf.d mount would skip
+      # envsubst and nginx would die on $CSP_MEDIA_ORIGIN (ADR-008).
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
     environment:
-      # CSP media-src origin for presigned video URLs (ADR-007/F1).
-      CSP_MEDIA_ORIGIN: "http://${S3_PUBLIC_ENDPOINT:-localhost}"
+      # Substitute ONLY CSP_* variables (^CSP_); $host/$remote_addr/$scheme
+      # etc. stay nginx's own (ADR-008).
+      NGINX_ENVSUBST_FILTER: "^CSP_"
+      # CSP media-src origin for presigned video URLs (ADR-007/F1). Scheme is
+      # a variable, never hardcoded; without .env the default http://localhost
+      # makes a local `docker compose up` work (ADR-008).
+      CSP_MEDIA_SCHEME: "${CSP_MEDIA_SCHEME:-http}"
+      CSP_MEDIA_ORIGIN: "${CSP_MEDIA_SCHEME:-http}://${S3_PUBLIC_ENDPOINT:-localhost}"
     depends_on:
       - web
     restart: unless-stopped

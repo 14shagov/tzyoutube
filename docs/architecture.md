@@ -121,7 +121,7 @@ flowchart LR
 ├── pyproject.toml, uv.lock, .env.example
 ├── deploy.sh                      # одна команда для чистой Ubuntu
 ├── docker-compose.yml
-├── nginx/nginx.conf
+├── nginx/default.conf.template   # envsubst-шаблон (ADR-008); entrypoint рендерит в conf.d
 ├── docs/                          # TZ, requirements, architecture, db-schema, security, testing, plan, adr/
 ├── migrations/                    # alembic
 ├── src/app/

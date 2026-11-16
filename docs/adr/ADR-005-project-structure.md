@@ -22,7 +22,7 @@ src/worker/        # arq воркер: settings, jobs (transcode)
 migrations/        # Alembic
 scripts/           # seed.py
 tests/             # unit/ + integration/
-nginx/             # nginx.conf
+nginx/             # default.conf.template (envsubst, ADR-008)
 docker-compose.yml # web, worker, db, redis, silo, nginx (+ профиль seed)
 deploy.sh
 ```
