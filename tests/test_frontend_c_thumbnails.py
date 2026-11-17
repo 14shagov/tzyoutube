@@ -13,7 +13,6 @@ Contract (owner m00002 task C):
   JS (CSP script-src 'self'): external app.js swaps in /static/thumb-ph.svg.
 """
 
-import uuid
 from pathlib import Path
 from unittest.mock import create_autospec
 from urllib.parse import urlsplit
@@ -21,6 +20,8 @@ from urllib.parse import urlsplit
 import pytest
 from fastapi.testclient import TestClient
 from minio import Minio
+from test_presign_offline import _ready_video, forbid_network, real_storage
+from test_viewing_api import FakeFeedRepo, FakeVideoRepo, _video
 
 from app.api import auth as auth_api
 from app.api import videos as videos_api
@@ -29,8 +30,6 @@ from app.core.config import get_settings
 from app.main import create_app
 from app.services import transcode as tc
 from app.services.fakes import FakeUserRepo
-from test_presign_offline import _ready_video, forbid_network, real_storage
-from test_viewing_api import FakeFeedRepo, FakeVideoRepo, _video
 
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES = ROOT / "src" / "app" / "templates"
