@@ -21,7 +21,7 @@
       if (isRegister) { data.channel_name = form.elements.channel_name.value.trim(); }
       var next = form.elements.next ? form.elements.next.value : "";
       if (next && next.indexOf("/") !== 0) { next = ""; }  // open-redirect guard
-      window.tzApi(isRegister ? "/api/auth/register" : "/api/auth/login", {
+      window.tzApi(isRegister ? "/auth/register" : "/auth/login", {
         method: "POST",
         body: data,
       }).then(function () {

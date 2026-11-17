@@ -94,9 +94,7 @@ def _read_path_expr(source: str, i: int) -> str:
                 if depth == 0:
                     break
                 depth -= 1
-            elif c in "+," and depth == 0:
-                break
-            elif c == ";" and depth == 0:
+            elif (c in "+," or c == ";") and depth == 0:
                 break
             i += 1
         parts.append("[^/]+")

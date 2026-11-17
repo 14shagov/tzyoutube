@@ -74,7 +74,7 @@
     var logout = document.getElementById("logout-btn");
     if (logout) {
       logout.addEventListener("click", function () {
-        window.tzApi("/api/auth/logout", { method: "POST" })
+        window.tzApi("/auth/logout", { method: "POST" })
           .then(function () { window.location.href = "/"; })
           .catch(function (err) { window.tzToast(err.message); });
       });
