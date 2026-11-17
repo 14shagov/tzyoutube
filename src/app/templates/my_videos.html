@@ -40,14 +40,16 @@
       <td class="mv-actions">
         <button class="btn sm edit-btn" type="button">Изменить</button>
         <button class="btn sm danger del-btn" type="button">Удалить</button>
+        <span class="save-status" hidden></span>
       </td>
     </tr>
-    <tr class="edit-row" hidden>
+    <tr class="edit-row" data-video-id="{{ row.id }}" hidden>
       <td colspan="5">
         <form class="edit-form">
           <input type="text" name="title" value="{{ row.title }}" maxlength="200" required>
           <textarea name="description" rows="2" maxlength="5000"></textarea>
           <button class="btn sm primary" type="submit">Сохранить</button>
+          <span class="save-status" hidden></span>
         </form>
       </td>
     </tr>

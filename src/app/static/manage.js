@@ -7,6 +7,28 @@
 
   function rowOf(btn) { return btn.closest("tr[data-video-id]"); }
 
+  function statusOf(row) { return row ? row.querySelector(".save-status") : null; }
+
+  function showStatus(row, msg, isErr) {
+    var el = statusOf(row);
+    if (!el) return;
+    el.textContent = msg;
+    el.hidden = false;
+    el.classList.toggle("form-error", !!isErr);
+  }
+
+  // Success: visible «Сохранено» in the row, then reload so the card shows
+  // the saved data. Error: the API error text goes into the same element.
+  function saved(row) {
+    showStatus(row, "Сохранено", false);
+    setTimeout(function () { window.location.reload(); }, 700);
+  }
+
+  function failed(row, err) {
+    showStatus(row, (err && err.message) || "Ошибка", true);
+    window.tzToast((err && err.message) || "Ошибка");
+  }
+
   table.addEventListener("click", function (e) {
     var t = e.target;
     if (!(t instanceof Element)) return;
@@ -22,13 +44,13 @@
         window.location.reload();
       }).catch(function (err) {
         if (err.status === 401) { window.location.href = "/login?next=/me/videos"; return; }
-        window.tzToast(err.message);
+        failed(row, err);
       });
     } else if (t.classList.contains("acl-remove")) {
       var uid = t.getAttribute("data-user");
       window.tzApi.del("/api/videos/" + id + "/acl/" + uid).then(function () {
-        window.location.reload();
-      }).catch(function (err) { window.tzToast(err.message); });
+        saved(row);
+      }).catch(function (err) { failed(row, err); });
     }
   });
 
@@ -44,13 +66,13 @@
       window.tzApi.patch("/api/videos/" + id, {
         title: String(fd.get("title")),
         description: String(fd.get("description")),
-      }).then(function () { window.location.reload(); })
-        .catch(function (err) { window.tzToast(err.message); });
+      }).then(function () { saved(row); })
+        .catch(function (err) { failed(row, err); });
     } else if (form.classList.contains("acl-form")) {
       var email = String(new FormData(form).get("email") || "");
       window.tzApi.post("/api/videos/" + id + "/acl", { email: email })
-        .then(function () { window.location.reload(); })
-        .catch(function (err) { window.tzToast(err.message); });
+        .then(function () { saved(row); })
+        .catch(function (err) { failed(row, err); });
     }
   });
 
@@ -62,8 +84,8 @@
       if (!row) return;
       window.tzApi.patch("/api/videos/" + row.getAttribute("data-video-id"), {
         is_private: t.checked,
-      }).then(function () { window.location.reload(); })
-        .catch(function (err) { window.tzToast(err.message); });
+      }).then(function () { saved(row); })
+        .catch(function (err) { failed(row, err); });
     }
   });
 })();

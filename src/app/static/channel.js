@@ -30,15 +30,20 @@
     var cancel = document.getElementById("channel-edit-cancel");
     editBtn.addEventListener("click", function () { form.hidden = !form.hidden; });
     if (cancel) cancel.addEventListener("click", function () { form.hidden = true; });
+    var statusBox = document.getElementById("channel-edit-status");
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       var fd = new FormData(form);
       errBox.hidden = true;
+      if (statusBox) statusBox.hidden = true;
       window.tzApi.patch("/api/channels/" + channelId, {
         channel_name: String(fd.get("channel_name")),
         description: String(fd.get("description")),
-      }).then(function () { window.location.reload(); })
-        .catch(function (err) { errBox.textContent = err.message; errBox.hidden = false; });
+      }).then(function () {
+        // visible «Сохранено», then reload so the header shows the new name
+        if (statusBox) { statusBox.textContent = "Сохранено"; statusBox.hidden = false; }
+        setTimeout(function () { window.location.reload(); }, 700);
+      }).catch(function (err) { errBox.textContent = err.message; errBox.hidden = false; });
     });
   }
 })();

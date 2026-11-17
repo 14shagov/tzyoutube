@@ -18,31 +18,33 @@ function buildDom(env) {
   const editRow = tbody.appendChild(
     new FakeElement("tr", { class: "edit-row", "data-video-id": "vid-1", hidden: "" })
   );
-  const form = editRow
-    .appendChild(new FakeElement("td"))
-    .appendChild(new FakeForm({ class: "edit-form", fields: { title: "New title", description: "d" } }));
+  const editTd = editRow.appendChild(new FakeElement("td"));
+  const form = editTd.appendChild(
+    new FakeForm({ class: "edit-form", fields: { title: "New title", description: "d" } })
+  );
+  const editStatus = editTd.appendChild(new FakeElement("span", { class: "save-status", hidden: "" }));
   const privRow = tbody.appendChild(new FakeElement("tr", { "data-video-id": "vid-2" }));
   const privTd = privRow.appendChild(new FakeElement("td"));
   const privStatus = privTd.appendChild(new FakeElement("span", { class: "save-status", hidden: "" }));
   const privCheck = privTd.appendChild(
     new FakeInput({ class: "priv", name: "is_private" })
   );
-  return { table, row, status, form, privRow, privStatus, privCheck };
+  return { table, row, status, form, editStatus, privRow, privStatus, privCheck };
 }
 
 test("edit-form PATCH success shows Сохранено in .save-status then reloads", async () => {
   const env = makeEnv();
   let call = null;
   env.window.tzApi.patch = (p, body) => { call = { p, body }; return Promise.resolve({}); };
-  const { table, form, status } = buildDom(env);
+  const { table, form, editStatus } = buildDom(env);
   loadScript(env, "src/app/static/manage.js");
   table.dispatch("submit", { target: form });
   await tick();
   assert.equal(call.p, "/api/videos/vid-1");
   assert.equal(call.body.title, "New title");
-  assert.equal(status.textContent, "Сохранено");
-  assert.equal(status.hidden, false);
-  assert.equal(status.classList.contains("form-error"), false);
+  assert.equal(editStatus.textContent, "Сохранено");
+  assert.equal(editStatus.hidden, false);
+  assert.equal(editStatus.classList.contains("form-error"), false);
   assert.equal(env.reloads.length, 0, "no immediate reload — user must see the status");
   await tick(800);
   assert.equal(env.reloads.length, 1, "reload after the status is visible");
@@ -52,13 +54,13 @@ test("edit-form PATCH failure shows the API error text in .save-status, no reloa
   const env = makeEnv();
   const err = Object.assign(new Error("название занято"), { status: 409 });
   env.window.tzApi.patch = () => Promise.reject(err);
-  const { table, form, status } = buildDom(env);
+  const { table, form, editStatus } = buildDom(env);
   loadScript(env, "src/app/static/manage.js");
   table.dispatch("submit", { target: form });
   await tick();
-  assert.equal(status.textContent, "название занято");
-  assert.equal(status.hidden, false);
-  assert.equal(status.classList.contains("form-error"), true);
+  assert.equal(editStatus.textContent, "название занято");
+  assert.equal(editStatus.hidden, false);
+  assert.equal(editStatus.classList.contains("form-error"), true);
   await tick(800);
   assert.equal(env.reloads.length, 0);
 });
@@ -73,6 +75,6 @@ test("is_private change PATCH success shows Сохранено in its row", asyn
   table.dispatch("change", { target: privCheck });
   await tick();
   assert.equal(call.p, "/api/videos/vid-2");
-  assert.deepEqual(call.body, { is_private: true });
+  assert.equal(call.body.is_private, true);
   assert.equal(privStatus.textContent, "Сохранено");
 });

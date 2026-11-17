@@ -399,6 +399,8 @@ body.sidebar-collapsed .side-item { justify-content: center; gap: 0; }
 .file-info { margin-top: 10px; font-weight: 600; }
 .upload-actions { display: flex; align-items: center; gap: 12px; }
 .form-error { color: var(--danger); font-size: 13px; }
+.save-status { color: var(--ok, #7ee787); font-size: 13px; margin-left: 8px; }
+.save-status.form-error { color: var(--danger); }
 .upload-status { margin-top: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
 progress#progress { width: 100%; height: 8px; accent-color: var(--accent); }
 .my-videos .mv-title a { color: var(--fg); font-weight: 600; text-decoration: none; }

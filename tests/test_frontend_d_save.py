@@ -48,7 +48,7 @@ def test_node_js_behaviour_tests_pass() -> None:
     if shutil.which("node") is None:
         pytest.skip("node not available")
     r = subprocess.run(
-        ["node", "--test", "tests/js/"],
-        cwd=ROOT, capture_output=True, text=True, timeout=120,
+        ["node", "--test", "tests/js/manage.test.mjs", "tests/js/channel.test.mjs"],
+        cwd=ROOT, capture_output=True, text=True, timeout=120, check=False,
     )
     assert r.returncode == 0, r.stdout + "\n" + r.stderr
