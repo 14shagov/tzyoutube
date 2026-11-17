@@ -489,3 +489,58 @@ bare-dict тел). После всех групп: `uv run pytest -q` = **400 pa
 
 - Ждём команду владельца (UI этапов 3–4: страницы 3.5, 3.8, 4.2, 4.5; seed/deploy —
   этап 5).
+
+## Ручной прогон фронтенда в браузере: 4 бага, закрыты 2026-11-17 (задача владельца m00002)
+
+Ручная проверка (nginx/web-логи + браузер) нашла 4 бага; закрыты задачами A–F,
+по одному коммиту, красный тест отдельным коммитом ПЕРЕД фиксом. После всех:
+`uv run pytest -q` = **512 passed, 2 skipped**, `uv run ruff check .` чист.
+
+- A `84a8d1e`(red) `132f93c`: страж `tests/test_frontend_js_contract.py` —
+  все URL-литералы в static/*.js и шаблонах сверяются с маршрутами и методами
+  из `app.openapi()`. Поймал: app.js logout и auth.js register/login звали
+  `/api/auth/*`, а роутер auth смонтирован как `/auth/*` (main.py:90) → 404.
+  Фикс: пути → `/auth/logout`, `/auth/register`, `/auth/login`.
+- B `cb4a446`: тест logout-флоу (статic-проверка пути/редиректа +
+  e2e register→login→кнопка «Выйти»→POST /auth/logout 204→шапка «Войти»).
+  Путь уже исправлен в A; тест фиксирует регресс.
+- C `88bc6b0`(red) `aa3b7a3` + ADR-009: превью 403 — бакет `thumbnails` не
+  public-read, а `ensure_buckets` только создаёт бакеты. Решение (ADR-009):
+  ВСЕ превью отдаются presigned URL, бакет остаётся приватным
+  (публичный префикс утёк бы по id для hidden/private/not-ready/deleted);
+  nginx `/media/thumbnails/` теперь deny-by-design. В воркере кадр берётся
+  не с 0: `thumbnail_offset_seconds` = min(1.0, 10% длительности raw),
+  `build_ffmpeg_args(..., thumb_offset=...)`. UI: при ошибке загрузки img —
+  нейтральная заглушка `/static/thumb-ph.svg` через addEventListener("error")
+  (без inline-JS, под CSP). Повторная генерация для старых видео —
+  `scripts/regen_thumbnails.py`. Тесты: офлайн-presign (autospec + запрет
+  сети), приватные не отдают превью анонимно, нет inline on*= в шаблонах.
+- D `c02ec37`(red) `c1a118c`: PATCH 200 сохранял, но страница молчала.
+  Причина: edit-row не имел `data-video-id` → обработчик формы молча выходил.
+  Теперь после успешного PATCH — «Сохранено» в `.save-status` (+reload через
+  700 мс), при ошибке — текст `detail` из API в том же элементе
+  (видео: edit/приватность/ACL/удаление; канал: #channel-edit-status +
+  #channel-edit-error). Тесты: static + `node --test` (tests/js, фейковый DOM).
+- E `29dbb8b`(red) `249f167`: upload → 202, но опрос статуса никогда не
+  стартовал: upload.js звал `window.tzApi.get`, а в app.js были только
+  .post/.del/.patch → TypeError внутри setInterval. Фикс: `tzApi.get` +
+  опрос останавливается на ready/failed, показывает `failure_reason`,
+  таймаут 5 минут с понятным сообщением. Контракт-тест: поля, которые читает
+  JS (`id` в 202, `status`/`failure_reason` в /status), есть в OpenAPI.
+- F: ручные проверки — manual-checks.md п.19 (по каждому пункту A–F:
+  URL → действие → ожидание); п.16 дополнен: `/media/thumbnails/*` теперь
+  403, превью — presigned из карточки/ленты.
+
+### Почему юнит-тесты не ловили эти баги (честно)
+
+- Контракт JS↔API (URL-литералы в статике vs маршруты) просто не проверялся:
+  стражи читали шаблоны на внешние URL/inline, но не сверяли fetch-пути с
+  openapi. Теперь сверяет test_frontend_js_contract.
+- Доступ к превью (политика бакета + nginx-маршрут) не тестировался: тесты
+  silo-политик не было, nginx-проверки парсят конфиг, но не связывали его с
+  ensure_buckets. Теперь ADR-009 + страж ensure_buckets без set_bucket_policy
+  + офлайн-presign тесты.
+- до этой сессии не было JS-рантайм тестов (node --test + фейковый DOM) —
+  поэтому «обработчик не дёргается» (D) и «tzApi.get undefined» (E) были
+  невидимы статике; теперь tests/js покрывает manage/channel/upload.
+

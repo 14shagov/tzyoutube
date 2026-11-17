@@ -197,8 +197,11 @@ docker compose down -v        # чистый старт (удалит данны
   Presigned URL содержит `response-content-type=video%2Fmp4` и
   `response-content-disposition=inline` (покрывает и старые объекты).
 - Также: открыть `play_url` в браузере — должен играть inline, не скачиваться;
-  превью público: `curl.exe -s -D - -o NUL http://localhost/media/thumbnails/<uuid>.jpg`
-  → `Content-Type: image/jpeg`, `Cache-Control: public, max-age=3600`, один nosniff.
+  превью (ADR-009, регресс C): анонимный
+  `curl.exe -s -o NUL -w "%{http_code}" http://localhost/media/thumbnails/<uuid>.jpg`
+  → **403** (бакет приватный, /media/ — deny); presigned `thumbnail_url` из
+  `GET /api/feed` или карточки → `curl.exe -I "<thumbnail_url>"` → 200,
+  `Content-Type: image/jpeg`, в URL есть `X-Amz-Signature`.
 - Прислать: заголовки 206-ответа, заголовки превью, скрин/описание поведения браузера.
 
 ## 17. Этап 3–4 API: каналы, подписки, управление видео, плейлисты, модерация (группы 3A–3F)
@@ -290,3 +293,34 @@ docker compose down -v        # чистый старт (удалит данны
   `Content-Security-Policy` с `script-src 'self'`.
 - Прислать: скриншоты F1 (светлая/тёмная), F3, F4 (прогресс), F5, F6 +
   отметки по чек-листу выше.
+
+## 19. Регресс-баги ручного прогона 2026-11-17 (A–F, закрыты; задача m00002)
+
+Предусловие: стек поднят (п.1), user1 залогинен (п.5), есть ready-видео (п.14).
+Формат тот же: URL/команда → действие → ожидание.
+
+- **A (JS-контракт)**: в Network любой страницы нет запросов на `/api/auth/*`
+  (404 в логах nginx); все fetch из static/*.js — только на маршруты из
+  `http://localhost/openapi.json`. Ожидание: 0 запросов с 404 за сессию.
+- **B (logout)**: на любой странице нажать «Выйти» → запрос
+  `POST /auth/logout` → 204, редирект на `/`, в шапке «Войти».
+  Ожидание: в Network ровно один POST /auth/logout (не /api/auth/logout).
+- **C (превью)**: на `/` карточки видео показывают превью (img src — presigned
+  URL с X-Amz-Signature, не /media/...). Анонимно (без cookie):
+  `curl.exe -s -o NUL -w "%{http_code}" http://localhost/media/thumbnails/<uuid>.jpg`
+  → 403. Приватное/hidden видео: у гостя карточка 404, превью nowhere.
+  битое превью (удалить объект в silo): карточка показывает заглушку
+  /static/thumb-ph.svg, в консоли нет ошибок CSP.
+  Ожидание: 118×403 из отчёта gone — 0; все публичные ready карточки с картинкой.
+- **D (сохранение)**: `/me/videos` → «Изменить» → поменять title → «Сохранить»
+  → PATCH /api/videos/{id} 200 и рядом с формой «Сохранено», затем reload.
+  Повторить с занятым/невалидным title → 4xx и текст ошибки API в .save-status.
+  То же: чекбокс приватности, ACL (добавить/удалить email), `/channel/{id}`
+  (форма владельца → «Сохранено» / текст ошибки в #channel-edit-error).
+- **E (загрузка)**: `/upload` → выбрать файл → «Загрузить» → в Network:
+  POST /api/videos → 202, затем GET /api/videos/{id}/status каждые ~2 с →
+  «Готово!» + ссылка на /watch/{id}. Битый файл → статус `failed` и на
+  странице «Ошибка обработки: <failure_reason>». Ожидание: опрос виден в
+  Network (баг: ни одного запроса /status), остановка на ready/failed.
+- **F**: этот чек-лист; прислать отметки по каждому пункту + скриншоты
+  (B после выхода, C превью+заглушка, D «Сохранено», E Network-таймлайн опроса).
