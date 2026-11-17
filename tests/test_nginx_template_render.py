@@ -118,9 +118,19 @@ def test_render_leaves_no_unexpanded_placeholders() -> None:
         )
 
 
+def _strip_comment_lines(text: str) -> str:
+    """Drop comments: a `$variable` name mentioned in prose is data, not a
+    placeholder — but check for `$` at line start or after whitespace."""
+    return "".join(
+        line if not line.lstrip().startswith("#") else ""
+        for line in text.splitlines(keepends=True)
+    )
+
+
 def test_render_keeps_nginx_variables_and_has_no_unknown_ones() -> None:
     rendered = render_like_container(template_text(), DEFAULT_ENV)
-    names = {m.group("braced") or m.group("bare") for m in _VAR.finditer(rendered)}
+    directive_text = _strip_comment_lines(rendered)
+    names = {m.group("braced") or m.group("bare") for m in _VAR.finditer(directive_text)}
     assert names, "no $-variables survived - renderer or template is broken"
     unknown = sorted(names - NGINX_VARIABLES)
     assert not unknown, f"unknown nginx variables in rendered config: {unknown}"
