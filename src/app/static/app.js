@@ -88,5 +88,18 @@
         chip.classList.add("active");
       });
     });
+
+    // Thumbnail fallback (CSP: no inline onerror). If a signed thumb URL fails
+    // (expired signature, deleted object), swap in the neutral placeholder.
+    Array.prototype.forEach.call(
+      document.querySelectorAll(".thumb img, .rec-thumb img"),
+      function (img) {
+        img.addEventListener("error", function () {
+          if (img.dataset.thumbFbk) return;
+          img.dataset.thumbFbk = "1";
+          img.src = "/static/thumb-ph.svg";
+        });
+      }
+    );
   });
 })();

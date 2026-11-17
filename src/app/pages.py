@@ -101,14 +101,20 @@ def _public_user(user) -> dict | None:
     }
 
 
-def _thumb(video) -> str | None:
+def _thumb(video, storage) -> str | None:
+    """ADR-009: thumbnails are only ever presigned (bucket stays private)."""
     key = getattr(video, "thumbnail_key", None)
-    if not key or getattr(video, "is_private", False):
+    if not key:
         return None
-    return f"/media/{key}"
+    return storage.presigned_get(
+        BUCKETS["thumbnails"],
+        key,
+        response_headers={"response-content-type": "image/jpeg"},
+        private=bool(getattr(video, "is_private", False)),
+    )
 
 
-async def _feed_cards(videos, user_repo) -> list[dict]:
+async def _feed_cards(videos, user_repo, storage) -> list[dict]:
     """Assemble grid cards; owner channel names via user_repo.get_by_id."""
     cards = []
     for v in videos:
@@ -117,7 +123,7 @@ async def _feed_cards(videos, user_repo) -> list[dict]:
         cards.append({
             "id": v.id,
             "title": v.title,
-            "thumb": _thumb(v),
+            "thumb": _thumb(v, storage),
             "duration": fmt_duration(getattr(v, "duration_seconds", 0)),
             "views_label": f"{views} {plural(views, 'просмотр', 'просмотра', 'просмотров')}",
             "channel_name": owner.channel_name if owner is not None else "—",
@@ -173,10 +179,11 @@ async def home(
     request: Request,
     feed_repo=Depends(videos_api.get_feed_repo),
     user_repo=Depends(auth_api.get_user_repo),
+    storage=Depends(videos_api.get_storage),
     user=Depends(videos_api._optional_user),
 ):
     videos = await feed_repo.public_feed(limit=24, offset=0)
-    cards = await _feed_cards(videos, user_repo)
+    cards = await _feed_cards(videos, user_repo, storage)
     return templates.TemplateResponse(request, "home.html", {
         "request": request,
         "user": _public_user(user),
@@ -196,11 +203,12 @@ async def search_page(
     q: str = "",
     feed_repo=Depends(videos_api.get_feed_repo),
     user_repo=Depends(auth_api.get_user_repo),
+    storage=Depends(videos_api.get_storage),
     user=Depends(videos_api._optional_user),
 ):
     query = q.strip()
     videos = await feed_repo.search(query, limit=24, offset=0) if query else []
-    cards = await _feed_cards(videos, user_repo)
+    cards = await _feed_cards(videos, user_repo, storage)
     return templates.TemplateResponse(request, "home.html", {
         "request": request,
         "user": _public_user(user),
@@ -267,21 +275,13 @@ async def watch_page(
     views = int(getattr(video, "view_count", 0) or 0)
 
     rec_videos = await feed_repo.public_feed(limit=24, offset=0)
-    recs = await _feed_cards([v for v in rec_videos if v.id != video_id][:12], user_repo)
+    recs = await _feed_cards([v for v in rec_videos if v.id != video_id][:12], user_repo, storage)
 
-    # Thumbnail: public videos via nginx /media/, private via presigned URL
-    # (response-content-type forces image/jpeg — covers legacy objects).
+    # ADR-009: the thumbnail is ALWAYS a presigned URL (bucket stays private),
+    # issued here only after the can_view check above. response-content-type
+    # forces image/jpeg — covers legacy objects.
     thumb_key = getattr(video, "thumbnail_key", None)
-    if thumb_key and not getattr(video, "is_private", False):
-        thumb_url = f"/media/{thumb_key}"
-    elif thumb_key:
-        thumb_url = storage.presigned_get(  # sync: minio signs locally, no network
-            BUCKETS["thumbnails"], thumb_key,
-            response_headers={"response-content-type": "image/jpeg"},
-            private=True,
-        )
-    else:
-        thumb_url = None
+    thumb_url = _thumb(video, storage) if thumb_key else None
 
     return templates.TemplateResponse(request, "watch.html", {
         "request": request,
@@ -385,6 +385,7 @@ async def channel_page(
     sub_repo=Depends(channels_api.get_subscription_repo),
     playlist_repo=Depends(playlists_api.get_playlist_repo),
     user_repo=Depends(auth_api.get_user_repo),
+    storage=Depends(videos_api.get_storage),
 ):
     owner = await channel_repo.get_user(channel_id)
     if owner is None:
@@ -418,7 +419,7 @@ async def channel_page(
         vids = await channel_repo.list_channel_videos(
             channel_id, viewer_id=viewer_id, limit=50, offset=0
         )
-        cards = await _feed_cards(vids, user_repo)
+        cards = await _feed_cards(vids, user_repo, storage)
 
     return templates.TemplateResponse(request, "channel.html", {
         "request": request,
@@ -451,13 +452,14 @@ async def subscriptions_page(
     user=Depends(videos_api._optional_user),
     sub_repo=Depends(channels_api.get_subscription_repo),
     user_repo=Depends(auth_api.get_user_repo),
+    storage=Depends(videos_api.get_storage),
 ):
     redirect = _require_user_page(user, "/subscriptions")
     if redirect is not None:
         return redirect
     channels = await sub_repo.subscribed_channels(user.id, limit=50, offset=0)
     videos = await sub_repo.subscriptions_feed(user.id, limit=24, offset=0)
-    cards = await _feed_cards(videos, user_repo)
+    cards = await _feed_cards(videos, user_repo, storage)
     chan_rows = [
         {"id": c.id, "channel_name": c.channel_name, "avatar_url": channels_api.DEFAULT_AVATAR_URL}
         for c in channels

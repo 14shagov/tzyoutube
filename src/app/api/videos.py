@@ -225,13 +225,24 @@ class CommentList(BaseModel):
     items: list[CommentOut]
 
 
-def _thumb_url(video) -> str | None:
+def _thumb_url(video, storage: Storage) -> str | None:
+    """ADR-009: thumbnails are ONLY served via presigned URLs.
+
+    The `thumbnails` bucket is private, so a bare /media/<key> URL would 403
+    (and must never become public-read, otherwise any key leaks anonymously).
+    Every thumb — public or private — is presigned here after the caller's
+    access check, so hidden/private/not-ready/deleted videos never expose an
+    anonymous thumbnail.
+    """
     key = getattr(video, "thumbnail_key", None)
     if not key:
         return None
-    if getattr(video, "is_private", False):
-        return None  # private thumbs are presigned at page render (stage 3 UI)
-    return f"/media/{key}"
+    return storage.presigned_get(
+        BUCKETS["thumbnails"],
+        key,
+        response_headers={"response-content-type": "image/jpeg"},
+        private=bool(getattr(video, "is_private", False)),
+    )
 
 
 feed_router = APIRouter(prefix="/api", tags=["feed"])
@@ -242,11 +253,12 @@ async def feed(
     limit: Annotated[int, Query(ge=0, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
     feed_repo=Depends(get_feed_repo),
+    storage: Storage = Depends(get_storage),
 ) -> FeedOut:
     videos = await feed_repo.public_feed(limit=limit, offset=offset)
     return FeedOut(items=[
         FeedItem(
-            id=v.id, title=v.title, thumbnail_url=_thumb_url(v),
+            id=v.id, title=v.title, thumbnail_url=_thumb_url(v, storage),
             duration_seconds=v.duration_seconds, view_count=v.view_count,
         )
         for v in videos
@@ -259,13 +271,14 @@ async def search(
     limit: Annotated[int, Query(ge=0, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
     feed_repo=Depends(get_feed_repo),
+    storage: Storage = Depends(get_storage),
 ) -> FeedOut:
     if not q.strip():
         return FeedOut(items=[])
     videos = await feed_repo.search(q.strip(), limit=limit, offset=offset)
     return FeedOut(items=[
         FeedItem(
-            id=v.id, title=v.title, thumbnail_url=_thumb_url(v),
+            id=v.id, title=v.title, thumbnail_url=_thumb_url(v, storage),
             duration_seconds=v.duration_seconds, view_count=v.view_count,
         )
         for v in videos
@@ -326,7 +339,7 @@ async def video_card(
         id=video.id, title=video.title, description=video.description,
         status=video.status, is_private=video.is_private,
         duration_seconds=video.duration_seconds, view_count=video.view_count,
-        play_url=play_url, thumbnail_url=_thumb_url(video),
+        play_url=play_url, thumbnail_url=_thumb_url(video, storage),
     )
 
 

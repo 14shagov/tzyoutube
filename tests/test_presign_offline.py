@@ -142,13 +142,16 @@ class TestEveryPresignPathIsOffline:
         storage = real_storage()
         assert access.video_play_url(storage, _ready_video(is_private=True)) is None
 
-    def test_thumbnails_use_public_media_route_not_presign(self) -> None:
-        # Thumbnails are served by nginx from the public-read bucket via
-        # /media/{key}; private thumbs are deferred to stage 3. Neither path
-        # may presign.
-        public = videos_api._thumb_url(_ready_video())
-        assert public == "/media/thumbnails/x.jpg"
-        assert videos_api._thumb_url(_ready_video(is_private=True)) is None
+    def test_thumbnails_are_presigned_never_public_media(self) -> None:
+        # ADR-009: the thumbnails bucket is PRIVATE; every thumb (public or
+        # private) is a presigned URL, never a bare /media/{key} path.
+        public = videos_api._thumb_url(_ready_video(), real_storage())
+        assert public is not None and not public.startswith("/media/")
+        assert "X-Amz-Signature=" in urlsplit(public).query
+        private = videos_api._thumb_url(_ready_video(is_private=True), real_storage())
+        assert private is not None and not private.startswith("/media/")
+        assert "X-Amz-Signature=" in urlsplit(private).query
+        assert videos_api._thumb_url(_ready_video(thumbnail_key=None), real_storage()) is None
 
 
 class _FakeVideoRepo:
@@ -188,11 +191,12 @@ class TestFeedSearchCardWithRealPresignClient:
             c._test_video = video  # type: ignore[attr-defined]
             yield c
 
-    def test_feed_200_with_media_thumbnail(self, client: TestClient) -> None:
+    def test_feed_200_with_presigned_thumbnail(self, client: TestClient) -> None:
         r = client.get("/api/feed")
         assert r.status_code == 200
         item = r.json()["items"][0]
-        assert item["thumbnail_url"] == "/media/thumbnails/x.jpg"
+        assert item["thumbnail_url"] and not item["thumbnail_url"].startswith("/media/")
+        assert "X-Amz-Signature=" in urlsplit(item["thumbnail_url"]).query
         assert item["view_count"] == 3
 
     def test_search_200(self, client: TestClient) -> None:
@@ -211,4 +215,6 @@ class TestFeedSearchCardWithRealPresignClient:
         parts = urlsplit(body["play_url"])
         assert parts.netloc == get_settings().s3_public_endpoint
         assert "X-Amz-Signature=" in parts.query
-        assert body["thumbnail_url"] == "/media/thumbnails/x.jpg"
+        thumb = body["thumbnail_url"]
+        assert thumb and not thumb.startswith("/media/")
+        assert "X-Amz-Signature=" in urlsplit(thumb).query

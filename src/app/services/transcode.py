@@ -31,10 +31,12 @@ FFMPEG_ARGS_TEMPLATE = [
 ]
 
 # C3: explicit stream map (first video stream only) + same scale cap.
+# `-ss {ss}` is filled with thumbnail_offset_seconds(): NOT t=0 (black frame),
+# 10% of the duration capped at 1s, never past the end.
 _THUMBNAIL_ARGS = [
     "-nostdin",
     "-protocol_whitelist", "file",
-    "-ss", "1",
+    "-ss", "{ss}",
     "-i", "{input}",
     "-map", "0:v:0",
     "-frames:v", "1",
@@ -120,11 +122,24 @@ def parse_ffprobe_json(text: str) -> ProbeInfo:
     )
 
 
-def build_ffmpeg_args(input_path: str, output_path: str, thumb_path: str) -> list[str]:
+def thumbnail_offset_seconds(duration: float | None) -> float:
+    """Frame timestamp for the thumbnail: never t=0 (often a black frame).
+
+    10% of the duration, capped at 1 s and never past the end. Unknown or
+    non-positive duration falls back to 1 s.
+    """
+    if duration is None or duration <= 0:
+        return 1.0
+    return min(1.0, duration * 0.1)
+
+
+def build_ffmpeg_args(
+    input_path: str, output_path: str, thumb_path: str, thumb_offset: float = 1.0
+) -> list[str]:
     """ffmpeg invocation: transcode (capped at 480p) + grab a thumbnail frame."""
     def _fill(template: list[str]) -> list[str]:
         return [
-            a.format(input=input_path, output=output_path, thumb=thumb_path)
+            a.format(input=input_path, output=output_path, thumb=thumb_path, ss=f"{thumb_offset:g}")
             for a in template
         ]
 
@@ -181,7 +196,17 @@ async def run_transcode(
             await asyncio.to_thread(_fail, f"download failed: {exc}")
             return None
 
-        args = build_ffmpeg_args(str(raw_path), str(out_path), str(thumb_path))
+        # Thumbnail frame is NOT at t=0: probe the raw input for its duration
+        # and seek to 10% (capped at 1 s). A failed/unknown probe falls back
+        # to the 1 s default inside thumbnail_offset_seconds.
+        raw_duration: float | None = None
+        if probe is not None:
+            raw_info = await probe(str(raw_path))
+            if raw_info.ok:
+                raw_duration = raw_info.duration_seconds
+        offset = thumbnail_offset_seconds(raw_duration)
+
+        args = build_ffmpeg_args(str(raw_path), str(out_path), str(thumb_path), thumb_offset=offset)
         ok, ffmpeg_output = await runner(args)
 
         if not ok or not out_path.exists():

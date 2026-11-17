@@ -93,8 +93,11 @@ def test_static_files_served() -> None:
 def test_templates_and_static_have_no_external_urls() -> None:
     files = list(TEMPLATES.glob("*.html")) + list(STATIC.glob("*.*"))
     assert files, "no template/static files found"
+    # XML namespace identifiers (e.g. svg xmlns) are URIs by spec but are
+    # never fetched over the network — not external resources.
+    ns = "http://www.w3.org/2000/svg"
     for f in files:
-        text = f.read_text(encoding="utf-8")
+        text = f.read_text(encoding="utf-8").replace(f'xmlns="{ns}"', "")
         assert not re.search(r"https?://", text), f"external URL in {f.name}"
 
 

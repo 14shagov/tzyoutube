@@ -12,7 +12,11 @@ from app.api import videos as videos_api
 from app.main import create_app
 from app.services.fakes import FakeUserRepo
 
-EXTERNAL = re.compile(r"https?://(?!localhost\b|127\.0\.0\.1\b)", re.IGNORECASE)
+# XML namespace identifiers (svg xmlns) are URIs by spec but never fetched —
+# not external resources.
+EXTERNAL = re.compile(
+    r"https?://(?!localhost\b|127\.0\.0\.1\b|www\.w3\.org/2000/svg)", re.IGNORECASE
+)
 
 
 def _app(user=None, video=None):

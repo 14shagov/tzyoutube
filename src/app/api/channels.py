@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
 from app.api.playlists import PlaylistListOut, get_playlist_repo
-from app.api.videos import FeedItem, FeedOut, _optional_user, _thumb_url
+from app.api.videos import FeedItem, FeedOut, Storage, _optional_user, _thumb_url, get_storage
 from app.core.db import get_db_session
 from app.models import User
 from app.services import social
@@ -124,6 +124,7 @@ async def channel_videos(
     offset: Annotated[int, Query(ge=0)] = 0,
     viewer: User | None = Depends(_optional_user),
     channel_repo: ChannelRepo = Depends(get_channel_repo),
+    storage: Storage = Depends(get_storage),
 ) -> ChannelVideosOut:
     if await channel_repo.get_user(channel_id) is None:
         raise HTTPException(404, "channel not found")
@@ -132,7 +133,7 @@ async def channel_videos(
     )
     return ChannelVideosOut(items=[
         ChannelVideoItem(
-            id=v.id, title=v.title, thumbnail_url=_thumb_url(v),
+            id=v.id, title=v.title, thumbnail_url=_thumb_url(v, storage),
             duration_seconds=v.duration_seconds, view_count=v.view_count,
             status=v.status, is_private=v.is_private,
         )
@@ -246,11 +247,12 @@ async def subscriptions_feed(
     offset: Annotated[int, Query(ge=0)] = 0,
     user: User = Depends(get_current_user),
     sub_repo: SubscriptionRepo = Depends(get_subscription_repo),
+    storage: Storage = Depends(get_storage),
 ) -> FeedOut:
     videos = await sub_repo.subscriptions_feed(user.id, limit=limit, offset=offset)
     return FeedOut(items=[
         FeedItem(
-            id=v.id, title=v.title, thumbnail_url=_thumb_url(v),
+            id=v.id, title=v.title, thumbnail_url=_thumb_url(v, storage),
             duration_seconds=v.duration_seconds, view_count=v.view_count,
         )
         for v in videos
