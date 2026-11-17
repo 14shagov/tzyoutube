@@ -58,10 +58,19 @@
     uploadBtn.disabled = !(file && titleInput.value.trim());
   });
 
+  var POLL_INTERVAL_MS = 2000;
+  var POLL_TIMEOUT_MS = 5 * 60 * 1000;  // 5 minutes max in "обрабатывается"
+
   function pollStatus(videoId) {
     statusBox.hidden = false;
     statusText.textContent = "Обрабатывается…";
+    var startedAt = Date.now();
     var timer = setInterval(function () {
+      if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
+        clearInterval(timer);
+        statusText.textContent = "Превышено время ожидания обработки — попробуйте позже";
+        return;
+      }
       window.tzApi.get("/api/videos/" + videoId + "/status").then(function (s) {
         if (s.status === "ready") {
           clearInterval(timer);
@@ -73,7 +82,7 @@
           statusText.textContent = "Ошибка обработки: " + (s.failure_reason || "неизвестно");
         }
       }).catch(function () { /* keep polling on transient errors */ });
-    }, 2000);
+    }, POLL_INTERVAL_MS);
   }
 
   uploadBtn.addEventListener("click", function () {

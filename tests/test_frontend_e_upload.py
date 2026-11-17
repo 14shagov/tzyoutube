@@ -28,8 +28,8 @@ def test_app_js_defines_tzapi_get():
 
 
 def test_upload_poll_stops_on_ready_and_failed_and_shows_failure_reason():
-    ready_block = re.search(r'status\s*===\s*"ready".*?clearInterval', UPLOAD_JS, re.S)
-    failed_block = re.search(r'status\s*===\s*"failed".*?clearInterval', UPLOAD_JS, re.S)
+    ready_block = re.search(r'status\s*===\s*"ready".*?clearInterval', UPLOAD_JS, re.DOTALL)
+    failed_block = re.search(r'status\s*===\s*"failed".*?clearInterval', UPLOAD_JS, re.DOTALL)
     assert ready_block, "poll must clearInterval on ready"
     assert failed_block, "poll must clearInterval on failed"
     assert "failure_reason" in UPLOAD_JS, "failed message must include failure_reason"

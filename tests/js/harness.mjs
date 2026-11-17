@@ -86,8 +86,9 @@ export class FakeInput extends FakeElement {
 }
 
 export class FakeFormData {
-  constructor(form) { this._form = form; }
-  get(k) { return this._form._fields[k] ?? null; }
+  constructor(form) { this._form = form; this._extra = {}; }
+  append(k, v) { (this._extra[k] = this._extra[k] || []).push(v); }
+  get(k) { return this._form ? (this._form._fields[k] ?? null) : (this._extra[k]?.[0] ?? null); }
 }
 
 export function makeEnv() {

@@ -29,6 +29,9 @@
     });
   };
 
+  window.tzApi.get = function (path) {
+    return window.tzApi(path, { method: "GET" });
+  };
   window.tzApi.post = function (path, body) {
     return window.tzApi(path, { method: "POST", body: body || {} });
   };
