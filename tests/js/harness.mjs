@@ -100,6 +100,7 @@ export function makeEnv() {
   document.getElementById = (id) => byId[id] || null;
   const reloads = [];
   const toasts = [];
+  const intervals = [];
   const window = {
     location: { href: "", reload: () => { reloads.push(1); } },
     confirm: () => true,
@@ -119,9 +120,16 @@ export function makeEnv() {
     HTMLInputElement: FakeInput,
     FormData: FakeFormData,
     setTimeout,
+    setInterval: (fn, ms) => {
+      const rec = { fn, ms, cleared: false };
+      intervals.push(rec);
+      return rec;
+    },
+    clearInterval: (rec) => { if (rec) rec.cleared = true; },
     console,
   };
-  return { sandbox, window, document, byId, reloads, toasts };
+  const stepIntervals = () => { for (const rec of intervals) { if (!rec.cleared) rec.fn(); } };
+  return { sandbox, window, document, byId, reloads, toasts, intervals, stepIntervals };
 }
 
 export function loadScript(env, relPath) {
