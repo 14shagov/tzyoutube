@@ -102,7 +102,9 @@ services:
   nginx:
     image: nginx:1.27-alpine
     ports:
-      - "80:80"
+      # D0: loopback-only — the app is reachable solely via http://localhost,
+      # never on external interfaces.
+      - "127.0.0.1:80:80"
     volumes:
       # Template, not a ready config: the image entrypoint renders it to
       # /etc/nginx/conf.d/ on start. A direct conf.d mount would skip
