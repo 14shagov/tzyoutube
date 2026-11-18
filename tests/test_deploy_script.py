@@ -127,10 +127,11 @@ def test_deploy_sh_secrets_not_printed_to_stdout() -> None:
         stripped = line.strip()
         if stripped.startswith("#"):
             continue
-        # echo/printf of a variable that holds a secret value.
-        if re.search(r"\b(echo|printf)\b.*\$(SECRET_KEY|POSTGRES_PASSWORD|S3_SECRET_KEY|S3_ACCESS_KEY|ADMIN_PASSWORD)", stripped):
+        # echo/printf of a variable that holds a stored secret value.
+        # ADMIN_PASSWORD is handled separately below (allowed once, at the end).
+        if re.search(r"\b(echo|printf)\b.*\$(SECRET_KEY|POSTGRES_PASSWORD|S3_SECRET_KEY|S3_ACCESS_KEY)\b", stripped):
             pytest.fail(
-                f"deploy.sh:{i} prints a secret to stdout: {stripped!r}"
+                f"deploy.sh:{i} prints a stored secret to stdout: {stripped!r}"
             )
     # The admin password MAY be printed exactly once, at the end.
     pw_prints = [
