@@ -49,6 +49,28 @@ def test_compose_publishes_only_nginx() -> None:
                 assert name == "nginx", f"{name} publishes ports: {ports}"
 
 
+def test_nginx_port_bound_to_loopback_only() -> None:
+    """D0: the only published port must be loopback-only (127.0.0.1:80:80)
+    so the app is reachable solely at http://localhost, never on external
+    interfaces."""
+    compose = _compose()
+    ports = compose["services"]["nginx"].get("ports", [])
+    assert ports, "nginx publishes no ports"
+    for published in ports:
+        # entries may be "80:80" (str) or {host_ip: ..., published: ...} (dict)
+        if isinstance(published, dict):
+            assert published.get("host_ip") in ("127.0.0.1", "0.0.0.0") is False or published.get("host_ip") == "127.0.0.1", (
+                f"nginx port bound to non-loopback host_ip: {published}"
+            )
+            assert published.get("host_ip") == "127.0.0.1", (
+                f"nginx port must bind 127.0.0.1, got: {published}"
+            )
+        else:
+            assert published.startswith("127.0.0.1:"), (
+                f"nginx port must be loopback-only '127.0.0.1:80:80', got: {published}"
+            )
+
+
 def test_no_latest_tags_anywhere() -> None:
     offenders: list[str] = []
     compose_text = COMPOSE_PATH.read_text(encoding="utf-8")
