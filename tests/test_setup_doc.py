@@ -26,7 +26,7 @@ def test_setup_doc_exists() -> None:
 
 
 def test_has_sections(setup: str) -> None:
-    headings = re.findall(r"^##\s+(.+)$", setup, re.M)
+    headings = re.findall(r"^##\s+(.+)$", setup, re.MULTILINE)
     joined = " | ".join(headings).lower()
     for topic in (
         "локальн",  # локальный запуск / порядок запуска
@@ -55,7 +55,7 @@ def test_deploy_script_step_by_step(setup: str) -> None:
     assert "sudo ./deploy.sh" in setup
     assert "--no-seed" in setup
     # stages of deploy.sh are described one by one
-    stages = re.findall(r"^\s*\d+\.\s+.+$", setup, re.M)
+    stages = re.findall(r"^\s*\d+\.\s+.+$", setup, re.MULTILINE)
     assert len(stages) >= 6, stages
     for topic in ("ubuntu", "root", "docker", "80", "env", "health", "seed"):
         assert topic in setup.lower(), topic
@@ -72,7 +72,7 @@ def test_update_section(setup: str) -> None:
 
 def test_full_cleanup_section(setup: str) -> None:
     assert "docker compose down -v" in setup
-    assert re.search(r"volumes?|тома|томов", setup, re.I)
+    assert re.search(r"volumes?|тома|томов", setup, re.IGNORECASE)
 
 
 def test_typical_errors(setup: str) -> None:

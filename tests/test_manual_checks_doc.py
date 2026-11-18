@@ -29,7 +29,7 @@ def status() -> str:
 
 
 def test_manual_checks_has_end_to_end_scenario(checks: str) -> None:
-    headings = re.findall(r"^##\s+(.+)$", checks, re.M)
+    headings = re.findall(r"^##\s+(.+)$", checks, re.MULTILINE)
     joined = " | ".join(headings).lower()
     assert "сценар" in joined or "e2e" in joined or "сквозн" in joined, headings
     low = checks.lower()
@@ -39,7 +39,7 @@ def test_manual_checks_has_end_to_end_scenario(checks: str) -> None:
 
 def test_manual_checks_has_deploy_rerun(checks: str) -> None:
     assert "sudo ./deploy.sh" in checks
-    headings = re.findall(r"^##\s+(.+)$", checks, re.M)
+    headings = re.findall(r"^##\s+(.+)$", checks, re.MULTILINE)
     joined = " | ".join(headings).lower()
     assert "deploy" in joined, headings
 
@@ -47,7 +47,7 @@ def test_manual_checks_has_deploy_rerun(checks: str) -> None:
 def test_manual_checks_numbered_sections_are_continuous(checks: str) -> None:
     numbers = [
         int(n)
-        for n in re.findall(r"^##\s+(\d+)\.", checks, re.M)
+        for n in re.findall(r"^##\s+(\d+)\.", checks, re.MULTILINE)
     ]
     assert numbers == list(range(1, len(numbers) + 1)), numbers
     assert len(numbers) >= 20, numbers
@@ -59,7 +59,7 @@ def test_status_mentions_deploy_work(status: str) -> None:
 
 
 def test_status_has_done_next_problems(status: str) -> None:
-    headings = re.findall(r"^##\s+(.+)$", status, re.M)
+    headings = re.findall(r"^##\s+(.+)$", status, re.MULTILINE)
     joined = " | ".join(headings).lower()
     assert "дальше" in joined, headings
     assert "проблем" in joined or "риск" in joined, headings

@@ -64,21 +64,21 @@ def test_links_to_docs_resolve(readme: str, doc: str) -> None:
 
 
 def test_architecture_section(readme: str) -> None:
-    assert re.search(r"^##\s+Архитектура|^##\s+Architecture", readme, re.M)
+    assert re.search(r"^##\s+Архитектура|^##\s+Architecture", readme, re.MULTILINE)
 
 
 def test_machine_requirements(readme: str) -> None:
-    assert re.search(r"^##\s+.*[Тр]ребования|^##\s+.*Requirements", readme, re.M)
+    assert re.search(r"^##\s+.*[Тр]ребования|^##\s+.*Requirements", readme, re.MULTILINE)
     assert "Ubuntu" in readme
     assert "Docker" in readme
     assert re.search(r"порт\s*80|port\s*80", readme)
 
 
 def test_demo_accounts_marked_demo_only(readme: str) -> None:
-    assert re.search(r"^##\s+.*(?:[Дд]емо|Demo)", readme, re.M)
+    assert re.search(r"^##\s+.*(?:[Дд]емо|Demo)", readme, re.MULTILINE)
     for email in ("admin@example.com", "mod@example.com", "user1@example.com"):
         assert email in readme, email
-    assert re.search(r"demo[- ]only|только для демо|демо[- ]?только", readme, re.I)
+    assert re.search(r"demo[- ]only|только для демо|демо[- ]?только", readme, re.IGNORECASE)
 
 
 def test_addresses(readme: str) -> None:
@@ -91,7 +91,7 @@ def test_test_command(readme: str) -> None:
 
 
 def test_repo_structure(readme: str) -> None:
-    assert re.search(r"^##\s+.*[Ст]труктура|^##\s+.*[Rr]epository structure", readme, re.M)
+    assert re.search(r"^##\s+.*[Ст]труктура|^##\s+.*[Rr]epository structure", readme, re.MULTILINE)
     for path in (
         "src/app/",
         "src/worker/",

@@ -26,7 +26,7 @@ def test_agents_exists() -> None:
 
 
 def test_has_launch_section(agents: str) -> None:
-    headings = re.findall(r"^##\s+(.+)$", agents, re.M)
+    headings = re.findall(r"^##\s+(.+)$", agents, re.MULTILINE)
     joined = " | ".join(headings).lower()
     assert "запуск" in joined or "launch" in joined, headings
 
