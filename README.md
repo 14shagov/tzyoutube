@@ -89,6 +89,7 @@ plugin, ffmpeg (нужен воркеру для транскода).
 Документация:
 
 - [docs/architecture.md](docs/architecture.md) — компоненты и потоки данных.
+- [docs/setup.md](docs/setup.md) — установка, запуск, логи, обновление, очистка, типичные ошибки.
 - [docs/requirements.md](docs/requirements.md) — требования, критерии приёмки, допущения.
 - [docs/db-schema.md](docs/db-schema.md) — схема PostgreSQL.
 - [docs/security.md](docs/security.md) — модель угроз и меры защиты.

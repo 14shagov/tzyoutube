@@ -53,6 +53,7 @@ def test_readme_has_short_description(readme: str) -> None:
         "docs/requirements.md",
         "docs/db-schema.md",
         "docs/security.md",
+        "docs/setup.md",
         "docs/status.md",
         "docs/manual-checks.md",
     ],
