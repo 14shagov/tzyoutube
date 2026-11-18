@@ -34,11 +34,12 @@ def test_first_line_is_clone_and_deploy_command(readme: str) -> None:
 
 
 def test_readme_has_short_description(readme: str) -> None:
-    # a real prose paragraph (not a heading, not a code block)
+    # a real prose paragraph (not a heading, not a code block, not the command)
     paragraphs = [
         p.strip()
         for p in readme.split("\n\n")
-        if p.strip() and not p.strip().startswith(("#", "```"))
+        if p.strip()
+        and not p.strip().startswith(("#", "```", "git clone"))
     ]
     assert paragraphs, "README is empty"
     first_paragraph = paragraphs[0]
