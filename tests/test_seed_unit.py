@@ -14,18 +14,7 @@ import pytest
 from minio import Minio
 
 from app.core.storage import Storage
-from app.models import (
-    Comment,
-    Playlist,
-    PlaylistItem,
-    Reaction,
-    Subscription,
-    User,
-    Video,
-    VideoAcl,
-    VideoReport,
-    VideoView,
-)
+from app.models import Comment, Playlist, PlaylistItem, User, Video, VideoReport
 from app.seed import (
     DEMO_VIDEOS,
     SeedDeps,
@@ -256,8 +245,8 @@ def _make_deps(*, mark_ready: bool = True, transcode_timeout: float = 30.0):
     return deps, user_repo, video_repo, queue, client
 
 
-ADMIN = dict(admin_email="admin@example.com", admin_channel="AdminChannel",
-             admin_password="DemoAdmin123")
+ADMIN = {"admin_email": "admin@example.com", "admin_channel": "AdminChannel",
+         "admin_password": "DemoAdmin123"}
 
 
 class TestSeedGate:
@@ -296,7 +285,7 @@ class TestFfmpegArgs:
 
 class TestSeedAll:
     async def test_creates_full_demo_dataset(self) -> None:
-        deps, user_repo, video_repo, queue, _client = _make_deps()
+        deps, user_repo, video_repo, _queue, _client = _make_deps()
         summary = await seed_all(deps, **ADMIN)
 
         assert summary.users == 5

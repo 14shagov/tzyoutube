@@ -59,9 +59,6 @@ def test_nginx_port_bound_to_loopback_only() -> None:
     for published in ports:
         # entries may be "80:80" (str) or {host_ip: ..., published: ...} (dict)
         if isinstance(published, dict):
-            assert published.get("host_ip") in ("127.0.0.1", "0.0.0.0") is False or published.get("host_ip") == "127.0.0.1", (
-                f"nginx port bound to non-loopback host_ip: {published}"
-            )
             assert published.get("host_ip") == "127.0.0.1", (
                 f"nginx port must bind 127.0.0.1, got: {published}"
             )
