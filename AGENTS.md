@@ -26,6 +26,28 @@
 - `uv run ruff check .` — линтер
 - Запрещены `pip install` и голый `python`/`python3`. Docker и Docker Compose локально не запускать (просить владельца: команда → ожидание → что прислать).
 
+## Запуск (команды владельца на целевой машине)
+
+Одна команда на чистой Ubuntu 22.04/24.04 (ставит Docker, готовит `.env`,
+поднимает стек, дожидается healthcheck, наливает демо-данные):
+
+- `sudo ./deploy.sh` — развернуть всё + демо-данные (пароль первого админа
+  печатается один раз в конце)
+- `sudo ./deploy.sh --no-seed` — развернуть без демо-данных
+
+Ручной запуск через Docker Compose (если нужен контроль над шагами):
+
+- `docker compose up -d --build` — собрать и поднять стек
+- `docker compose --profile seed run --rm seed` — налить демо-данные
+- `docker compose logs -f web worker` — логи приложения и воркера
+- `docker compose down -v` — полная очистка (контейнеры, сети и тома)
+
+Адреса после запуска: `http://localhost/` (интерфейс), `http://localhost/docs`
+(OpenAPI), `http://localhost/health` (healthcheck через nginx на `127.0.0.1:80`).
+
+Подробности — `docs/setup.md` (порядок запуска, типичные ошибки), текущий статус
+работ — `docs/status.md`, ручные сценарии — `docs/manual-checks.md`.
+
 ## Структура репозитория (план, актуализируется)
 
 ```
