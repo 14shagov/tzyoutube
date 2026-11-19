@@ -96,7 +96,7 @@ class SqlVideoRepo:
         return video
 
     async def get(self, video_id: uuid.UUID) -> Video | None:
-        return await self._session.get(Video, video_id)
+        return await self._session.get(Video, video_id, populate_existing=True)
 
     async def update(self, video: Video) -> Video:
         self._session.add(video)
